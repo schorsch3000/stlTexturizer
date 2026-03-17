@@ -138,38 +138,36 @@ function isBoundaryEdge(faces, vertFaces, v1, v2) {
   return shared < 2;
 }
 
-// ── Guard 2: Link condition (non-manifold / pinch prevention) ────────────────
-// The set of common neighbours of v1 and v2 must equal exactly the apex
-// vertices of their shared faces.  Extra common neighbours mean collapsing
-// would fuse disconnected regions → non-manifold edge.
+// ── Guard 2: Duplicate-face / pinch prevention ───────────────────────────────
+// After collapsing v2 into v1, every face of v2 that survives (i.e. does not
+// share v1) gets v2 replaced by v1.  If any such remapped face is identical to
+// a face already incident to v1, the collapse would create a duplicate → reject.
+// This is the actual harm the link condition guards against, without the
+// false-positives that the strict set-equality test produces on interior edges.
 
 function hasLinkViolation(faces, vertFaces, v1, v2) {
-  // Collect apex vertices of the shared faces
-  const apices = new Set();
+  // Build a set of face "signatures" already incident to v1 (excluding shared faces).
+  // A signature is the sorted triple of vertex indices, encoded as a string.
+  const v1Sigs = new Set();
   for (const f of vertFaces[v1]) {
     if (faces[f * 3] < 0) continue;
     const fa = faces[f * 3], fb = faces[f * 3 + 1], fc = faces[f * 3 + 2];
-    if (fa === v2 || fb === v2 || fc === v2) {
-      if (fa !== v1 && fa !== v2) apices.add(fa);
-      if (fb !== v1 && fb !== v2) apices.add(fb);
-      if (fc !== v1 && fc !== v2) apices.add(fc);
-    }
+    if (fa === v2 || fb === v2 || fc === v2) continue; // shared face, will be deleted
+    const arr = [fa, fb, fc].sort((a, b) => a - b);
+    v1Sigs.add(`${arr[0]},${arr[1]},${arr[2]}`);
   }
 
-  // Build neighbour sets for v1 and v2 from active faces
-  const nb1 = new Set(), nb2 = new Set();
-  for (const f of vertFaces[v1]) {
-    if (faces[f * 3] < 0) continue;
-    for (let k = 0; k < 3; k++) { const nb = faces[f * 3 + k]; if (nb !== v1) nb1.add(nb); }
-  }
+  // Check every surviving face of v2 (after remapping v2→v1) for duplicates.
   for (const f of vertFaces[v2]) {
     if (faces[f * 3] < 0) continue;
-    for (let k = 0; k < 3; k++) { const nb = faces[f * 3 + k]; if (nb !== v2) nb2.add(nb); }
-  }
-
-  // Check common neighbours match apices exactly
-  for (const nb of nb1) {
-    if (nb !== v2 && nb2.has(nb) && !apices.has(nb)) return true;
+    const fa = faces[f * 3], fb = faces[f * 3 + 1], fc = faces[f * 3 + 2];
+    if (fa === v1 || fb === v1 || fc === v1) continue; // shared face, will be deleted
+    // Remap v2 → v1
+    const ra = fa === v2 ? v1 : fa;
+    const rb = fb === v2 ? v1 : fb;
+    const rc = fc === v2 ? v1 : fc;
+    const arr = [ra, rb, rc].sort((a, b) => a - b);
+    if (v1Sigs.has(`${arr[0]},${arr[1]},${arr[2]}`)) return true;
   }
   return false;
 }

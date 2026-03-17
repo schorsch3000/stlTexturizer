@@ -48,12 +48,43 @@ export function subdivide(geometry, maxEdgeLength, onProgress) {
 }
 
 // ── One subdivision pass ──────────────────────────────────────────────────────
+//
+// Uses a two-step approach to eliminate T-junctions:
+//
+//  Step 1 – scan ALL triangles and mark every edge whose squared length
+//            exceeds maxSq.  Because this is global, both triangles that
+//            share an edge always agree on whether to split it.
+//
+//  Step 2 – rebuild the index list.  Each triangle is handled according to
+//            how many of its three edges are marked:
+//
+//    0 edges → keep as-is
+//    1 edge  → 2 sub-triangles  (bisect the one long edge)
+//    2 edges → 3 sub-triangles  (fan from the vertex opposite the short edge)
+//    3 edges → 4 sub-triangles  (classic 1→4 midpoint subdivision – most regular)
+//
+// The 2- and 3-edge cases are new compared to the old single-edge split and
+// produce significantly more regular results.  Thin slivers with one very
+// long edge still produce chains of thin children (unavoidable without moving
+// vertices off the surface), but the mesh is now crack-free in all cases.
 
 function subdividePass(positions, normals, indices, maxEdgeLength, safetyCap) {
   const maxSq = maxEdgeLength * maxEdgeLength;
   const midCache = new Map();
+
+  // ── Step 1: globally mark edges that need splitting ─────────────────────
+  const splitEdges = new Set();
+  for (let t = 0; t < indices.length; t += 3) {
+    const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+    if (edgeLenSq(positions, a, b) > maxSq) splitEdges.add(edgeKey(a, b));
+    if (edgeLenSq(positions, b, c) > maxSq) splitEdges.add(edgeKey(b, c));
+    if (edgeLenSq(positions, c, a) > maxSq) splitEdges.add(edgeKey(c, a));
+  }
+
+  if (splitEdges.size === 0) return { newIndices: indices, changed: false };
+
+  // ── Step 2: rebuild index list ───────────────────────────────────────────
   const nextIndices = [];
-  let changed = false;
 
   for (let t = 0; t < indices.length; t += 3) {
     // Safety cap: stop splitting, carry remaining triangles as-is
@@ -62,40 +93,93 @@ function subdividePass(positions, normals, indices, maxEdgeLength, safetyCap) {
       break;
     }
 
-    const a = indices[t];
-    const b = indices[t + 1];
-    const c = indices[t + 2];
+    const a = indices[t], b = indices[t + 1], c = indices[t + 2];
+    const sAB = splitEdges.has(edgeKey(a, b));
+    const sBC = splitEdges.has(edgeKey(b, c));
+    const sCA = splitEdges.has(edgeKey(c, a));
+    const n   = (sAB ? 1 : 0) + (sBC ? 1 : 0) + (sCA ? 1 : 0);
 
-    const ab = edgeLenSq(positions, a, b);
-    const bc = edgeLenSq(positions, b, c);
-    const ca = edgeLenSq(positions, c, a);
-
-    const longest = Math.max(ab, bc, ca);
-    if (longest <= maxSq) {
-      // Triangle is fine – keep as is
+    if (n === 0) {
+      // ── 0-split: keep triangle ─────────────────────────────────────────
       nextIndices.push(a, b, c);
-      continue;
-    }
 
-    changed = true;
+    } else if (n === 3) {
+      // ── 3-split: 1→4 regular midpoint subdivision ──────────────────────
+      //
+      //        a
+      //       / \
+      //     mCA─mAB
+      //     / \ / \
+      //    c─mBC───b
+      //
+      const mAB = getMidpoint(positions, normals, midCache, a, b);
+      const mBC = getMidpoint(positions, normals, midCache, b, c);
+      const mCA = getMidpoint(positions, normals, midCache, c, a);
+      nextIndices.push(
+        a,   mAB, mCA,
+        mAB, b,   mBC,
+        mCA, mBC, c,
+        mAB, mBC, mCA,
+      );
 
-    // Split the longest edge
-    if (longest === ab) {
-      const m = getMidpoint(positions, normals, midCache, a, b);
-      nextIndices.push(a, m, c,  m, b, c);
-    } else if (longest === bc) {
-      const m = getMidpoint(positions, normals, midCache, b, c);
-      nextIndices.push(a, b, m,  a, m, c);
+    } else if (n === 1) {
+      // ── 1-split: bisect the one marked edge → 2 sub-triangles ──────────
+      if (sAB) {
+        const m = getMidpoint(positions, normals, midCache, a, b);
+        nextIndices.push(a, m, c,  m, b, c);
+      } else if (sBC) {
+        const m = getMidpoint(positions, normals, midCache, b, c);
+        nextIndices.push(a, b, m,  a, m, c);
+      } else {                           // sCA
+        const m = getMidpoint(positions, normals, midCache, c, a);
+        nextIndices.push(a, b, m,  m, b, c);
+      }
+
     } else {
-      const m = getMidpoint(positions, normals, midCache, c, a);
-      nextIndices.push(a, b, m,  m, b, c);
+      // ── 2-split: 3 sub-triangles, fan from the untouched-edge vertex ───
+      //
+      // For each case the unsplit-edge vertex forms a small corner triangle
+      // with its two adjacent midpoints; the remaining quadrilateral is
+      // split along the diagonal that connects those two midpoints to the
+      // opposite vertices, preserving consistent CCW winding throughout.
+
+      if (!sAB) {                        // sBC + sCA: fan from C
+        const mBC = getMidpoint(positions, normals, midCache, b, c);
+        const mCA = getMidpoint(positions, normals, midCache, c, a);
+        nextIndices.push(
+          a,   b,   mBC,
+          a,   mBC, mCA,
+          c,   mCA, mBC,
+        );
+      } else if (!sBC) {                 // sAB + sCA: fan from A
+        const mAB = getMidpoint(positions, normals, midCache, a, b);
+        const mCA = getMidpoint(positions, normals, midCache, c, a);
+        nextIndices.push(
+          a,   mAB, mCA,
+          mAB, b,   c,
+          mAB, c,   mCA,
+        );
+      } else {                           // sAB + sBC: fan from B
+        const mAB = getMidpoint(positions, normals, midCache, a, b);
+        const mBC = getMidpoint(positions, normals, midCache, b, c);
+        nextIndices.push(
+          b,   mBC, mAB,
+          a,   mAB, mBC,
+          a,   mBC, c,
+        );
+      }
     }
   }
 
-  return { newIndices: nextIndices, changed };
+  return { newIndices: nextIndices, changed: true };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Canonical order key for an undirected edge – matches the getMidpoint cache key. */
+function edgeKey(a, b) {
+  return a < b ? `${a}:${b}` : `${b}:${a}`;
+}
 
 function edgeLenSq(pos, a, b) {
   const dx = pos[a*3]   - pos[b*3];
