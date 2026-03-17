@@ -46,6 +46,8 @@ const fragmentShader = /* glsl */`
   uniform vec3      boundsMin;
   uniform vec3      boundsSize;
   uniform vec3      boundsCenter;
+  uniform float     bottomAngleLimit; // degrees from horizontal; 0 = disabled
+  uniform float     topAngleLimit;    // degrees from horizontal; 0 = disabled
 
   varying vec3 vModelPos;
   varying vec3 vModelNormal;
@@ -57,7 +59,7 @@ const fragmentShader = /* glsl */`
 
   // Sample after applying scale + tiling
   float sampleMap(vec2 rawUV) {
-    return texture2D(displacementMap, fract(rawUV * scaleUV + offsetUV)).r;
+    return texture2D(displacementMap, fract(rawUV / scaleUV + offsetUV)).r;
   }
 
   // Height at this fragment for all projection modes.
@@ -138,7 +140,17 @@ const fragmentShader = /* glsl */`
   void main() {
     vec3 N = normalize(vNormal);
     float h = getHeight();
-
+    // ── Surface angle masking (FDM: suppress texture on near-horizontal faces) ────
+    // Use a 15° smoothstep fade above the threshold so the bump tapers gradually
+    // into the masked region rather than cutting off abruptly at the boundary edge.
+    float surfaceAngle = degrees(acos(clamp(abs(vModelNormal.z), 0.0, 1.0)));
+    float maskBlend = 1.0;
+    float FADE = 15.0;
+    if (vModelNormal.z <  0.0 && bottomAngleLimit >= 1.0)
+      maskBlend = min(maskBlend, smoothstep(bottomAngleLimit, bottomAngleLimit + FADE, surfaceAngle));
+    if (vModelNormal.z >= 0.0 && topAngleLimit >= 1.0)
+      maskBlend = min(maskBlend, smoothstep(topAngleLimit, topAngleLimit + FADE, surfaceAngle));
+    h = mix(0.5, h, maskBlend); // blend toward neutral grey (zero-gradient → no bump)
     // ── Bump mapping via screen-space height derivatives ──────────────────
     // dFdx/dFdy give the height change per screen pixel → height gradient
     float dhx = dFdx(h);
@@ -222,6 +234,8 @@ export function updateMaterial(material, displacementTexture, settings) {
     u.boundsSize.value.copy(settings.bounds.size);
     u.boundsCenter.value.copy(settings.bounds.center);
   }
+  u.bottomAngleLimit.value = settings.bottomAngleLimit ?? 5.0;
+  u.topAngleLimit.value    = settings.topAngleLimit    ?? 0.0;
 }
 
 // ── Internal ──────────────────────────────────────────────────────────────────
@@ -238,9 +252,11 @@ function buildUniforms(tex, settings) {
     scaleUV:         { value: new THREE.Vector2(settings.scaleU ?? 1, settings.scaleV ?? 1) },
     amplitude:       { value: settings.amplitude ?? 1.0 },
     offsetUV:        { value: new THREE.Vector2(settings.offsetU ?? 0, settings.offsetV ?? 0) },
-    boundsMin:       { value: b.min.clone() },
-    boundsSize:      { value: b.size.clone() },
-    boundsCenter:    { value: b.center.clone() },
+    boundsMin:        { value: b.min.clone() },
+    boundsSize:       { value: b.size.clone() },
+    boundsCenter:     { value: b.center.clone() },
+    bottomAngleLimit: { value: settings.bottomAngleLimit ?? 5.0 },
+    topAngleLimit:    { value: settings.topAngleLimit    ?? 0.0 },
   };
 }
 

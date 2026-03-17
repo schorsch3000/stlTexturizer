@@ -107,8 +107,8 @@ export function computeUV(pos, normal, mode, settings, bounds) {
       }
       return {
         triplanar: false,
-        u: fract(uRaw * scaleU + offsetU),
-        v: fract(vRaw * scaleV + offsetV),
+        u: fract(uRaw / scaleU + offsetU),
+        v: fract(vRaw / scaleV + offsetV),
       };
     }
 
@@ -149,9 +149,9 @@ export function computeUV(pos, normal, mode, settings, bounds) {
       return {
         triplanar: true,
         samples: [
-          { u: fract(uvXY.u * scaleU + offsetU), v: fract(uvXY.v * scaleV + offsetV), w: uvXY.w },
-          { u: fract(uvXZ.u * scaleU + offsetU), v: fract(uvXZ.v * scaleV + offsetV), w: uvXZ.w },
-          { u: fract(uvYZ.u * scaleU + offsetU), v: fract(uvYZ.v * scaleV + offsetV), w: uvYZ.w },
+          { u: fract(uvXY.u / scaleU + offsetU), v: fract(uvXY.v / scaleV + offsetV), w: uvXY.w },
+          { u: fract(uvXZ.u / scaleU + offsetU), v: fract(uvXZ.v / scaleV + offsetV), w: uvXZ.w },
+          { u: fract(uvYZ.u / scaleU + offsetU), v: fract(uvYZ.v / scaleV + offsetV), w: uvYZ.w },
         ],
       };
     }
@@ -159,8 +159,8 @@ export function computeUV(pos, normal, mode, settings, bounds) {
 
   return {
     triplanar: false,
-    u: fract(u * scaleU + offsetU),
-    v: fract(v * scaleV + offsetV),
+    u: fract(u / scaleU + offsetU),
+    v: fract(v / scaleV + offsetV),
   };
 }
 

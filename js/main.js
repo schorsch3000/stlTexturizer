@@ -25,6 +25,8 @@ const settings = {
   refineLength:  1.0,
   maxTriangles:  1_000_000,
   lockScale:     true,
+  bottomAngleLimit: 5,
+  topAngleLimit:    0,
 };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -62,11 +64,27 @@ const amplitudeVal = document.getElementById('amplitude-val');
 const refineLenVal = document.getElementById('refine-length-val');
 const maxTriVal    = document.getElementById('max-triangles-val');
 
+const bottomAngleLimitSlider = document.getElementById('bottom-angle-limit');
+const topAngleLimitSlider    = document.getElementById('top-angle-limit');
+const bottomAngleLimitVal    = document.getElementById('bottom-angle-limit-val');
+const topAngleLimitVal       = document.getElementById('top-angle-limit-val');
+
+// ── Scale slider log helpers ──────────────────────────────────────────────────
+// Slider stores 0–1000; actual scale spans 0.1–10 on a log axis.
+// Middle position 500 → scale 1.0 (exact midpoint on log scale).
+const _LOG_MIN = Math.log(0.1);
+const _LOG_MAX = Math.log(10);
+const scaleToPos = v => Math.round((Math.log(Math.max(0.1, Math.min(10, v))) - _LOG_MIN) / (_LOG_MAX - _LOG_MIN) * 1000);
+const posToScale = p => parseFloat(Math.exp(_LOG_MIN + (p / 1000) * (_LOG_MAX - _LOG_MIN)).toFixed(1));
+
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 initViewer(canvas);
 buildPresetGrid();
 wireEvents();
+// Sync scale number inputs with the slider's initial position
+scaleUVal.value = posToScale(parseFloat(scaleUSlider.value));
+scaleVVal.value = posToScale(parseFloat(scaleVSlider.value));
 
 // ── Preset grid ───────────────────────────────────────────────────────────────
 
@@ -144,52 +162,49 @@ function wireEvents() {
   });
 
   // Scale U — when lock is on, mirror to V
-  scaleUSlider.addEventListener('input', () => {
-    const v = parseFloat(scaleUSlider.value);
+  const applyScaleU = (v) => {
+    v = Math.max(0.1, Math.min(10, v));
     settings.scaleU = v;
-    scaleUVal.textContent = v.toFixed(2);
-    if (settings.lockScale) {
-      settings.scaleV = v;
-      scaleVSlider.value = v;
-      scaleVVal.textContent = v.toFixed(2);
-    }
-    clearTimeout(previewDebounce);
-    previewDebounce = setTimeout(updatePreview, 80);
-  });
+    scaleUSlider.value = scaleToPos(v);
+    scaleUVal.value = v;
+    if (settings.lockScale) { settings.scaleV = v; scaleVSlider.value = scaleToPos(v); scaleVVal.value = v; }
+    clearTimeout(previewDebounce); previewDebounce = setTimeout(updatePreview, 80);
+  };
+  scaleUSlider.addEventListener('input', () => applyScaleU(posToScale(parseFloat(scaleUSlider.value))));
+  scaleUVal.addEventListener('change', () => applyScaleU(parseFloat(scaleUVal.value)));
 
   // Scale V — when lock is on, mirror to U
-  scaleVSlider.addEventListener('input', () => {
-    const v = parseFloat(scaleVSlider.value);
+  const applyScaleV = (v) => {
+    v = Math.max(0.1, Math.min(10, v));
     settings.scaleV = v;
-    scaleVVal.textContent = v.toFixed(2);
-    if (settings.lockScale) {
-      settings.scaleU = v;
-      scaleUSlider.value = v;
-      scaleUVal.textContent = v.toFixed(2);
-    }
-    clearTimeout(previewDebounce);
-    previewDebounce = setTimeout(updatePreview, 80);
-  });
+    scaleVSlider.value = scaleToPos(v);
+    scaleVVal.value = v;
+    if (settings.lockScale) { settings.scaleU = v; scaleUSlider.value = scaleToPos(v); scaleUVal.value = v; }
+    clearTimeout(previewDebounce); previewDebounce = setTimeout(updatePreview, 80);
+  };
+  scaleVSlider.addEventListener('input', () => applyScaleV(posToScale(parseFloat(scaleVSlider.value))));
+  scaleVVal.addEventListener('change', () => applyScaleV(parseFloat(scaleVVal.value)));
 
   // Lock toggle
   lockScaleBtn.addEventListener('click', () => {
     settings.lockScale = !settings.lockScale;
     lockScaleBtn.classList.toggle('active', settings.lockScale);
     lockScaleBtn.setAttribute('aria-pressed', String(settings.lockScale));
-    // When locking, snap V to current U
     if (settings.lockScale) {
       settings.scaleV = settings.scaleU;
-      scaleVSlider.value = settings.scaleU;
-      scaleVVal.textContent = settings.scaleU.toFixed(2);
+      scaleVSlider.value = scaleToPos(settings.scaleU);
+      scaleVVal.value = settings.scaleU;
       updatePreview();
     }
   });
 
   linkSlider(offsetUSlider,   offsetUVal,   v => { settings.offsetU   = v; return v.toFixed(2); });
   linkSlider(offsetVSlider,   offsetVVal,   v => { settings.offsetV   = v; return v.toFixed(2); });
-  linkSlider(amplitudeSlider, amplitudeVal, v => { settings.amplitude = v; return `${v.toFixed(2)} mm`; });
-  linkSlider(refineLenSlider, refineLenVal, v => { settings.refineLength  = v; return `${v.toFixed(1)} mm`; }, false);
-  linkSlider(maxTriSlider,    maxTriVal,    v => { settings.maxTriangles  = v; return formatM(v); }, false);
+  linkSlider(amplitudeSlider, amplitudeVal, v => { settings.amplitude = v; return v.toFixed(2); });
+  linkSlider(refineLenSlider, refineLenVal, v => { settings.refineLength  = v; return v.toFixed(1); }, false);
+  linkSlider(maxTriSlider, maxTriVal, v => { settings.maxTriangles = v; return formatM(v); }, false);
+  linkSlider(bottomAngleLimitSlider, bottomAngleLimitVal, v => { settings.bottomAngleLimit = v; return v; });
+  linkSlider(topAngleLimitSlider,    topAngleLimitVal,    v => { settings.topAngleLimit    = v; return v; });
 
   // ── Export ──
   exportBtn.addEventListener('click', handleExport);
@@ -202,15 +217,30 @@ function wireEvents() {
 
 let previewDebounce = null;
 
-function linkSlider(slider, valEl, onChangeFn, livePreview = true) {
+function linkSlider(slider, valInput, onChangeFn, livePreview = true) {
+  const isSpan = valInput.tagName === 'SPAN';
   slider.addEventListener('input', () => {
-    const v  = parseFloat(slider.value);
-    valEl.textContent = onChangeFn(v);
+    const v = parseFloat(slider.value);
+    const display = onChangeFn(v);
+    if (isSpan) valInput.textContent = display; else valInput.value = display;
     if (livePreview) {
       clearTimeout(previewDebounce);
       previewDebounce = setTimeout(updatePreview, 80);
     }
   });
+  if (!isSpan) {
+    valInput.addEventListener('change', () => {
+      const raw = parseFloat(valInput.value);
+      if (isNaN(raw)) { valInput.value = slider.value; return; }
+      const clamped = Math.max(parseFloat(slider.min), Math.min(parseFloat(slider.max), raw));
+      slider.value = clamped;
+      valInput.value = onChangeFn(clamped);
+      if (livePreview) {
+        clearTimeout(previewDebounce);
+        previewDebounce = setTimeout(updatePreview, 80);
+      }
+    });
+  }
 }
 
 function formatM(n) {
@@ -248,14 +278,14 @@ async function handleSTL(file) {
     dropHint.classList.add('hidden');
 
     // Reset scale & offset sliders so scale=1 = one tile covers the full bounding box
-    const resetVal = (slider, valEl, value, fmt) => {
+    const resetVal = (slider, valEl, value) => {
       slider.value = value;
-      valEl.textContent = fmt(value);
+      valEl.value = value;
     };
-    settings.scaleU  = 1; resetVal(scaleUSlider,  scaleUVal,  1, v => v.toFixed(2));
-    settings.scaleV  = 1; resetVal(scaleVSlider,  scaleVVal,  1, v => v.toFixed(2));
-    settings.offsetU = 0; resetVal(offsetUSlider, offsetUVal, 0, v => v.toFixed(2));
-    settings.offsetV = 0; resetVal(offsetVSlider, offsetVVal, 0, v => v.toFixed(2));
+    settings.scaleU  = 1; scaleUSlider.value = scaleToPos(1); scaleUVal.value = 1;
+    settings.scaleV  = 1; scaleVSlider.value = scaleToPos(1); scaleVVal.value = 1;
+    settings.offsetU = 0; resetVal(offsetUSlider, offsetUVal, 0);
+    settings.offsetV = 0; resetVal(offsetVSlider, offsetVVal, 0);
     triLimitWarning.classList.add('hidden');
 
     // Default edge length = 1/100 of the largest bounding box dimension
@@ -263,7 +293,7 @@ async function handleSTL(file) {
     const defaultEdge = Math.max(0.1, Math.min(5.0, +(maxDim / 200).toFixed(2)));
     settings.refineLength = defaultEdge;
     refineLenSlider.value = defaultEdge;
-    refineLenVal.textContent = `${defaultEdge.toFixed(2)} mm`;
+    refineLenVal.value = defaultEdge;
 
     const triCount = getTriangleCount(geometry);
     const mb = ((geometry.attributes.position.array.byteLength) / 1024 / 1024).toFixed(2);

@@ -56,8 +56,12 @@ export function applyDisplacement(geometry, imageData, imgWidth, imgHeight, sett
   // so printed edges remain sharp.
 
   // ── Pass 1: accumulate area-weighted face normals per unique position ─────
-  // Map: posKey → { nx, ny, nz } (unnormalised sum)
+  // Map: posKey → [nx, ny, nz] (unnormalised sum)
   const smoothNrmMap = new Map();
+  // maskedFracMap: posKey → [maskedArea, totalArea]
+  // Tracks the fraction of surrounding face area that is masked so boundary
+  // vertices get a smooth displacement blend instead of a hard on/off cutoff.
+  const maskedFracMap = new Map();
 
   for (let t = 0; t < count; t += 3) {
     vA.fromBufferAttribute(posAttr, t);
@@ -66,6 +70,14 @@ export function applyDisplacement(geometry, imageData, imgWidth, imgHeight, sett
     edge1.subVectors(vB, vA);
     edge2.subVectors(vC, vA);
     faceNrm.crossVectors(edge1, edge2); // length = 2× triangle area → natural area weighting
+
+    // Determine if this face is masked (used to build the per-vertex blend weight)
+    const faceArea   = faceNrm.length();                               // ∝ 2× triangle area
+    const faceNzNorm = faceArea > 1e-12 ? faceNrm.z / faceArea : 0;  // unit-normal Z component
+    const faceAngle  = Math.acos(Math.abs(faceNzNorm)) * (180 / Math.PI);
+    const faceMasked = faceNzNorm < 0
+      ? (settings.bottomAngleLimit > 0 && faceAngle <= settings.bottomAngleLimit)
+      : (settings.topAngleLimit    > 0 && faceAngle <= settings.topAngleLimit);
 
     for (let v = 0; v < 3; v++) {
       tmpPos.fromBufferAttribute(posAttr, t + v);
@@ -77,6 +89,13 @@ export function applyDisplacement(geometry, imageData, imgWidth, imgHeight, sett
         existing[2] += faceNrm.z;
       } else {
         smoothNrmMap.set(k, [faceNrm.x, faceNrm.y, faceNrm.z]);
+      }
+      const mf = maskedFracMap.get(k);
+      if (mf) {
+        if (faceMasked) mf[0] += faceArea;
+        mf[1] += faceArea;
+      } else {
+        maskedFracMap.set(k, [faceMasked ? faceArea : 0, faceArea]);
       }
     }
   }
@@ -124,11 +143,29 @@ export function applyDisplacement(geometry, imageData, imgWidth, imgHeight, sett
     const k    = posKey(tmpPos.x, tmpPos.y, tmpPos.z);
     const sn   = smoothNrmMap.get(k);
     const grey = dispCache.get(k);
-    const disp = grey * settings.amplitude;
 
-    newPos[i*3]   = tmpPos.x + sn[0] * disp;
-    newPos[i*3+1] = tmpPos.y + sn[1] * disp;
-    newPos[i*3+2] = tmpPos.z + sn[2] * disp;
+    // Smooth blend: displacement scaled by the unmasked fraction of surrounding
+    // face area. Boundary vertices (shared by masked + unmasked faces) get a
+    // proportionally reduced displacement instead of a hard on/off cutoff.
+    const mf         = maskedFracMap.get(k) || [0, 1];
+    const maskedFrac = mf[1] > 0 ? mf[0] / mf[1] : 0;
+    const disp = (1 - maskedFrac) * grey * settings.amplitude;
+
+    const newX = tmpPos.x + sn[0] * disp;
+    const newY = tmpPos.y + sn[1] * disp;
+    let   newZ = tmpPos.z + sn[2] * disp;
+
+    // Prevent boundary vertices from poking through the masked surface in Z.
+    // Only triggers for vertices that are partly masked (maskedFrac > 0) and
+    // whose displacement would push them toward the masked surface direction.
+    if (maskedFrac > 0) {
+      if (settings.bottomAngleLimit > 0 && newZ < tmpPos.z) newZ = tmpPos.z;
+      if (settings.topAngleLimit    > 0 && newZ > tmpPos.z) newZ = tmpPos.z;
+    }
+
+    newPos[i*3]   = newX;
+    newPos[i*3+1] = newY;
+    newPos[i*3+2] = newZ;
 
     // Keep per-face normal for shading (recomputed below anyway)
     newNrm[i*3]   = tmpNrm.x;
