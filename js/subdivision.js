@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 
 const QUANTISE   = 1e4;
-const SAFETY_CAP = 5_000_000; // absolute OOM guard
+const SAFETY_CAP = 10_000_000; // absolute OOM guard
 
 // ── Public entry point ───────────────────────────────────────────────────────
 

@@ -7,6 +7,7 @@ import { LineMaterial }   from 'three/addons/lines/LineMaterial.js';
 let renderer, camera, scene, controls, meshGroup, ambientLight, dirLight1, dirLight2, grid;
 let currentMesh = null;
 let axesGroup = null;
+let dimensionGroup = null;
 let wireframeLines = null;   // LineSegments overlay, or null when hidden
 let wireframeVisible = false;
 let exclusionMesh = null;    // flat orange overlay for user-excluded faces
@@ -59,6 +60,81 @@ function buildAxesIndicator(size) {
   addAxis(new THREE.Vector3(1, 0, 0), 0xff3333, 'X');
   addAxis(new THREE.Vector3(0, 1, 0), 0x33dd55, 'Y');
   addAxis(new THREE.Vector3(0, 0, 1), 0x4488ff, 'Z');
+
+  return group;
+}
+
+// Create a canvas-texture sprite label for a dimension annotation.
+// Flat ground-plane label — no billboard, no background, lies directly on the bed.
+function buildDimensionLabel(text, hex, worldW, worldH) {
+  const c   = document.createElement('canvas');
+  c.width   = 256;
+  c.height  = 64;
+  const ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, 256, 64);
+  ctx.fillStyle = `#${hex.toString(16).padStart(6, '0')}`;
+  ctx.font      = 'bold 36px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, 128, 32);
+  const mesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(worldW, worldH),
+    new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthTest: false, side: THREE.DoubleSide }),
+  );
+  mesh.renderOrder = 998;
+  return mesh;
+}
+
+// Build X/Y dimension-line annotations lying flat on the ground plane.
+function buildDimensions(box, groundZ, scale) {
+  const group = new THREE.Group();
+  const fmt   = v => v.toFixed(2);
+  const pad   = scale * 0.18;
+  const tick  = scale * 0.08;
+  const lblW  = scale * 0.50;
+  const lblH  = scale * 0.12;
+  const zOff  = 0.02; // tiny lift to avoid z-fighting with the grid
+
+  const addLine = (pts, hex) => {
+    const line = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: hex, depthTest: false, transparent: true, opacity: 0.75 }),
+    );
+    line.renderOrder = 997;
+    group.add(line);
+  };
+
+  const addTick = (centre, dir, hex) => {
+    addLine([
+      centre.clone().addScaledVector(dir, -tick * 0.5),
+      centre.clone().addScaledVector(dir,  tick * 0.5),
+    ], hex);
+  };
+
+  // X dimension — line along the front edge of the model
+  {
+    const hex = 0xff3333;
+    const y   = box.min.y - pad;
+    addLine([new THREE.Vector3(box.min.x, y, groundZ), new THREE.Vector3(box.max.x, y, groundZ)], hex);
+    addTick(new THREE.Vector3(box.min.x, y, groundZ), new THREE.Vector3(0, 1, 0), hex);
+    addTick(new THREE.Vector3(box.max.x, y, groundZ), new THREE.Vector3(0, 1, 0), hex);
+    const lbl = buildDimensionLabel(`X: ${fmt(box.max.x - box.min.x)}`, hex, lblW, lblH);
+    lbl.position.set((box.min.x + box.max.x) / 2, y - lblH * 0.7, groundZ + zOff);
+    group.add(lbl);
+  }
+
+  // Y dimension — line along the right edge of the model
+  {
+    const hex = 0x33dd55;
+    const x   = box.max.x + pad;
+    addLine([new THREE.Vector3(x, box.min.y, groundZ), new THREE.Vector3(x, box.max.y, groundZ)], hex);
+    addTick(new THREE.Vector3(x, box.min.y, groundZ), new THREE.Vector3(1, 0, 0), hex);
+    addTick(new THREE.Vector3(x, box.max.y, groundZ), new THREE.Vector3(1, 0, 0), hex);
+    const lbl = buildDimensionLabel(`Y: ${fmt(box.max.y - box.min.y)}`, hex, lblW, lblH);
+    lbl.position.set(x + lblH * 0.7, (box.min.y + box.max.y) / 2, groundZ + zOff);
+    lbl.rotation.z = Math.PI / 2;
+    group.add(lbl);
+  }
 
   return group;
 }
@@ -200,6 +276,11 @@ export function loadGeometry(geometry, material) {
   const axisPad = axisSize * 1.8;
   axesGroup.position.set(box.min.x - axisPad, box.min.y - axisPad, groundZ);
   scene.add(axesGroup);
+
+  // Bounding-box dimension annotations on the ground plane
+  if (dimensionGroup) scene.remove(dimensionGroup);
+  dimensionGroup = buildDimensions(box, groundZ, sphere.radius);
+  scene.add(dimensionGroup);
 }
 
 /**

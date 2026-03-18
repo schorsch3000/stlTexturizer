@@ -72,6 +72,9 @@
         </div>
         <canvas id="viewport"></canvas>
         <div id="brush-cursor"></div>
+        <div id="store-cta-wrapper">
+          <a id="store-cta" href="https://geni.us/CNCStoreTexture" target="_blank" rel="noopener noreferrer" data-i18n="cta.store">🛒 Enjoying this free tool? Support us — Shop at CNCKitchen.STORE!</a>
+        </div>
       </div>
       <div id="viewport-footer">
         <span id="mesh-info" class="mesh-info"></span>
@@ -129,6 +132,16 @@
         </div>
       </section>
 
+      <!-- Displacement -->
+      <section class="panel-section">
+        <h2 data-i18n="sections.displacement">Displacement</h2>
+        <div class="form-row slider-row">
+          <label for="amplitude" data-i18n="labels.amplitude">Amplitude</label>
+          <input type="range" id="amplitude" min="-2" max="2" step="0.01" value="0.5" />
+          <input type="number" class="val" id="amplitude-val" value="0.5" min="-100" max="100" step="0.01" />
+        </div>
+      </section>
+
       <!-- Transform -->
       <section class="panel-section">
         <h2 data-i18n="sections.transform">Transform</h2>
@@ -168,16 +181,6 @@
           <label for="rotation" data-i18n="labels.rotation">Rotation</label>
           <input type="range" id="rotation" min="0" max="360" step="1" value="0" />
           <input type="number" class="val" id="rotation-val" value="0" min="0" max="360" step="1" />
-        </div>
-      </section>
-
-      <!-- Displacement -->
-      <section class="panel-section">
-        <h2 data-i18n="sections.displacement">Displacement</h2>
-        <div class="form-row slider-row">
-          <label for="amplitude" data-i18n="labels.amplitude">Amplitude</label>
-          <input type="range" id="amplitude" min="-2" max="2" step="0.01" value="0.5" />
-          <input type="number" class="val" id="amplitude-val" value="0.5" min="-100" max="100" step="0.01" />
         </div>
       </section>
 
@@ -280,16 +283,16 @@
         <h2 data-i18n="sections.export" data-i18n-title="tooltips.export" title="Smaller edge length = finer displacement detail. Output is then decimated to the triangle limit.">Export ⓘ</h2>
         <div class="form-row slider-row">
           <label for="refine-length" data-i18n="labels.resolution" data-i18n-title="tooltips.resolution" title="Edges longer than this value will be split during export">Resolution</label>
-          <input type="range" id="refine-length" min="0.1" max="5" step="0.1" value="1" />
-          <input type="number" class="val" id="refine-length-val" value="1" min="0.1" max="5" step="0.1" />
+          <input type="range" id="refine-length" min="0.05" max="5" step="0.05" value="1" />
+          <input type="number" class="val" id="refine-length-val" value="1" min="0.01" max="100" step="0.01" />
         </div>
         <div class="form-row slider-row">
           <label for="max-triangles" data-i18n="labels.outputTriangles" data-i18n-title="tooltips.outputTriangles" title="Mesh is fully subdivided first, then decimated down to this count">Output Triangles</label>
-          <input type="range" id="max-triangles" min="10000" max="5000000" step="10000" value="1000000" />
+          <input type="range" id="max-triangles" min="10000" max="10000000" step="10000" value="1000000" />
           <span class="val" id="max-triangles-val">1.0 M</span>
         </div>
         <div id="tri-limit-warning" class="tri-limit-warning hidden" data-i18n="warnings.safetyCapHit">
-          ⚠ 5M-triangle safety cap hit during subdivision — result may still be coarser than requested edge length.
+          ⚠ 10M-triangle safety cap hit during subdivision — result may still be coarser than requested edge length.
         </div>
 
         <div id="export-progress" class="export-progress hidden">

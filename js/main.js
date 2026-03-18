@@ -300,14 +300,14 @@ function wireEvents() {
   linkSlider(offsetVSlider,   offsetVVal,   v => { settings.offsetV   = v; return v.toFixed(2); });
   linkSlider(rotationSlider,  rotationVal,  v => { settings.rotation  = v; return Math.round(v); });
   linkSlider(amplitudeSlider, amplitudeVal, v => { settings.amplitude = v; return v.toFixed(2); });
-  linkSlider(refineLenSlider, refineLenVal, v => { settings.refineLength  = v; return v.toFixed(1); }, false);
+  linkSlider(refineLenSlider, refineLenVal, v => { settings.refineLength  = v; return v.toFixed(2); }, false);
   linkSlider(maxTriSlider, maxTriVal, v => { settings.maxTriangles = v; return formatM(v); }, false);
   linkSlider(bottomAngleLimitSlider, bottomAngleLimitVal, v => { settings.bottomAngleLimit = v; return v; });
   linkSlider(topAngleLimitSlider,    topAngleLimitVal,    v => { settings.topAngleLimit    = v; return v; });
 
   // ── Export ──
   exportBtn.addEventListener('click', () => {
-    if (localStorage.getItem('stlt-no-sponsor') === '1') {
+    if (sessionStorage.getItem('stlt-no-sponsor') === '1') {
       handleExport();
       return;
     }
@@ -318,7 +318,7 @@ function wireEvents() {
 
     const dismiss = () => {
       if (document.getElementById('sponsor-dont-show').checked) {
-        localStorage.setItem('stlt-no-sponsor', '1');
+        sessionStorage.setItem('stlt-no-sponsor', '1');
       }
       overlay.classList.add('hidden');
       handleExport();
@@ -722,9 +722,9 @@ async function handleSTL(file) {
     settings.offsetV = 0; resetVal(offsetVSlider, offsetVVal, 0);
     triLimitWarning.classList.add('hidden');
 
-    // Default edge length = 1/100 of the largest bounding box dimension
+    // Default edge length = 1/200 of the largest bounding box dimension
     const maxDim = Math.max(bounds.size.x, bounds.size.y, bounds.size.z);
-    const defaultEdge = Math.max(0.1, Math.min(5.0, +(maxDim / 100).toFixed(2)));
+    const defaultEdge = Math.max(0.05, Math.min(5.0, +(maxDim / 200).toFixed(2)));
     settings.refineLength = defaultEdge;
     refineLenSlider.value = defaultEdge;
     refineLenVal.value = defaultEdge;

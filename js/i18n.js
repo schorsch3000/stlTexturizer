@@ -95,7 +95,7 @@ export const TRANSLATIONS = {
     'tooltips.resolution':           'Edges longer than this value will be split during export',
     'labels.outputTriangles':        'Output Triangles',
     'tooltips.outputTriangles':      'Mesh is fully subdivided first, then decimated down to this count',
-    'warnings.safetyCapHit':         '\u26a0 5M-triangle safety cap hit during subdivision \u2014 result may still be coarser than requested edge length.',
+    'warnings.safetyCapHit':         '\u26a0 10M-triangle safety cap hit during subdivision \u2014 result may still be coarser than requested edge length.',
     'ui.exportStl':                  'Export STL',
 
     // Export progress stages
@@ -115,6 +115,10 @@ export const TRANSLATIONS = {
     'sponsor.dontShow':        "Don\u2019t show this again",
     'sponsor.closeAndContinue':'Close &amp; Continue',
 
+    // Store CTA
+    'cta.store':         '\uD83D\uDED2 Enjoying this free tool? Support us & shop at CNCKitchen.STORE!',
+    'cta.storeDismiss':  'Dismiss',
+
     // Alerts
     'alerts.loadFailed':   'Could not load STL: {msg}',
     'alerts.exportFailed': 'Export failed: {msg}',
@@ -132,7 +136,7 @@ export const TRANSLATIONS = {
 
     // Viewport footer
     'ui.wireframe':      'Drahtgitter',
-    'ui.controlsHint':   'Links ziehen: Drehen \u00a0·\u00a0 Rechts ziehen: Verschieben \u00a0·\u00a0 Scrollen: Zoomen',
+    'ui.controlsHint':   'Linke Maustaste: Drehen \u00a0·\u00a0 Rechte Maustaste: Verschieben \u00a0·\u00a0 Mausrad: Zoomen',
     'ui.meshInfo':       '{n} Dreiecke · {mb} MB',
 
     // Load STL button
@@ -165,7 +169,7 @@ export const TRANSLATIONS = {
     'tooltips.proportionalScalingAria':  'Proportionale Skalierung (U = V)',
 
     // Displacement section
-    'sections.displacement': 'Verschiebung',
+    'sections.displacement': 'Texturtiefe',
     'labels.amplitude':      'Amplitude',
 
     // Surface mask section
@@ -213,7 +217,7 @@ export const TRANSLATIONS = {
     'tooltips.resolution':           'Kanten l\u00e4nger als dieser Wert werden beim Export unterteilt',
     'labels.outputTriangles':        'Max Dreiecke',
     'tooltips.outputTriangles':      'Das Netz wird zuerst vollst\u00e4ndig unterteilt, dann auf diese Anzahl dezimiert',
-    'warnings.safetyCapHit':         '\u26a0 5-Mio.-Dreiecke-Sicherheitsgrenze bei der Unterteilung erreicht \u2014 Ergebnis kann gr\u00f6ber als gew\u00fcnschte Kantenl\u00e4nge sein.',
+    'warnings.safetyCapHit':         '\u26a0 10-Mio.-Dreiecke-Sicherheitsgrenze bei der Unterteilung erreicht \u2014 Ergebnis kann gr\u00f6ber als gew\u00fcnschte Kantenl\u00e4nge sein.',
     'ui.exportStl':                  'STL exportieren',
 
     // Export progress stages
@@ -232,6 +236,10 @@ export const TRANSLATIONS = {
     'sponsor.visitStore':      '\uD83D\uDED2 CNCKitchen.STORE besuchen',
     'sponsor.dontShow':        'Nicht mehr anzeigen',
     'sponsor.closeAndContinue':'Schlie\u00dfen &amp; Weiter',
+
+    // Store CTA
+    'cta.store':            '\uD83D\uDED2 Dieses Tool ist kostenlos - schau deshalb mal bei CNCKitchen.STORE vorbei!',
+    'cta.storeDismiss':    'Ausblenden',
 
     // Alerts
     'alerts.loadFailed':   'STL konnte nicht geladen werden: {msg}',
