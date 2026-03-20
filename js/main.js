@@ -131,6 +131,11 @@ const exclModeIncludeBtn  = document.getElementById('excl-mode-include');
 const exclSectionHeading  = document.getElementById('excl-section-heading');
 const exclHint            = document.getElementById('excl-hint');
 
+// ── License panel DOM refs ────────────────────────────────────────────────────
+const licenseLink    = document.getElementById('license-link');
+const licenseOverlay = document.getElementById('license-overlay');
+const licenseClose   = document.getElementById('license-close');
+
 // ── Scale slider log helpers ──────────────────────────────────────────────────
 // Slider stores 0–1000; actual scale spans 0.05–10 on a log axis.
 // Middle position 500 → scale ~0.71 (log midpoint between 0.05 and 10).
@@ -332,6 +337,13 @@ function wireEvents() {
     toggleDisplacementPreview(dispPreviewToggle.checked);
   });
 
+  // ── License ──
+  licenseLink.addEventListener('click', () => licenseOverlay.classList.remove('hidden'));
+  licenseClose.addEventListener('click', () => licenseOverlay.classList.add('hidden'));
+  licenseOverlay.addEventListener('click', (e) => {
+    if (e.target === licenseOverlay) licenseOverlay.classList.add('hidden');
+  });
+
   // ── Export ──
   exportBtn.addEventListener('click', () => {
     if (sessionStorage.getItem('stlt-no-sponsor') === '1') {
@@ -469,8 +481,9 @@ function wireEvents() {
   });
 
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && exclusionTool) {
-      setExclusionTool(null);
+    if (e.key === 'Escape') {
+      if (exclusionTool) setExclusionTool(null);
+      licenseOverlay.classList.add('hidden');
     }
   });
 }

@@ -334,8 +334,25 @@
         <button id="export-btn" class="export-btn" disabled data-i18n="ui.exportStl">Export STL</button>
       </section>
 
+      <button id="license-link" class="license-link" data-i18n="license.btn">License &amp; Terms</button>
+
     </aside>
   </main>
+
+  <!-- License popup -->
+  <div id="license-overlay" class="license-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="license-title">
+    <div class="license-modal">
+      <button id="license-close" class="license-close-btn" aria-label="Close">&#215;</button>
+      <h2 id="license-title" data-i18n="license.title">License &amp; Terms</h2>
+      <ul class="license-list">
+        <li data-i18n-html="license.item1">This tool is <strong>open-source</strong> — <a href="https://github.com/CNCKitchen/stlTexturizer" target="_blank" rel="noopener">view &amp; contribute on GitHub</a>.</li>
+        <li data-i18n-html="license.item2">Free to use for any purpose, including <strong>commercial work</strong> (e.g., texturing STLs for clients or products).</li>
+        <li data-i18n-html="license.item3">Attribution is <strong>appreciated</strong> but <strong>not required</strong> when using this tool as-is.</li>
+        <li data-i18n-html="license.item4">You may <strong>not</strong> sell or commercially redistribute this tool itself.</li>
+        <li data-i18n-html="license.item5">Forks or derivative works must credit <strong>CNC Kitchen</strong> by name and link to <a href="https://cnckitchen.store" target="_blank" rel="noopener">cnckitchen.store</a>.</li>
+      </ul>
+    </div>
+  </div>
 
   <!-- Sponsor popup -->
   <div id="sponsor-overlay" class="sponsor-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="sponsor-title">

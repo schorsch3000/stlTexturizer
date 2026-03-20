@@ -124,6 +124,15 @@ export const TRANSLATIONS = {
     'progress.done':                 'Done!',
     'progress.processing':           'Processing\u2026',
 
+    // License popup
+    'license.btn':    'License & Terms',
+    'license.title':  'License & Terms',
+    'license.item1':  'This tool is <strong>open-source</strong> \u2014 <a href="https://github.com/CNCKitchen/stlTexturizer" target="_blank" rel="noopener">view &amp; contribute on GitHub</a>.',
+    'license.item2':  'Free to use for any purpose, including <strong>commercial work</strong> (e.g., texturing STLs for clients or products).',
+    'license.item3':  'Attribution is <strong>appreciated</strong> but <strong>not required</strong> when using this tool as-is.',
+    'license.item4':  'You may <strong>not</strong> sell or commercially redistribute this tool itself.',
+    'license.item5':  'Forks or derivative works must credit <strong>CNC Kitchen</strong> by name and link to <a href="https://cnckitchen.store" target="_blank" rel="noopener">cnckitchen.store</a>.',
+
     // Sponsor modal
     'sponsor.title':           'Thanks for using CNC Kitchen STL Texturizer!',
     'sponsor.body':            'This tool is provided <strong>completely free</strong> by CNC Kitchen.<br>While your STL is being processed, why not check out the store that helps us keep making cool stuff for you?',
@@ -261,6 +270,15 @@ export const TRANSLATIONS = {
     'progress.writingStl':           'STL schreiben\u2026',
     'progress.done':                 'Fertig!',
     'progress.processing':           'Verarbeitung\u2026',
+
+    // License popup
+    'license.btn':    'Lizenz & Nutzung',
+    'license.title':  'Lizenz & Nutzungsbedingungen',
+    'license.item1':  'Dieses Tool ist <strong>Open Source</strong> \u2014 <a href="https://github.com/CNCKitchen/stlTexturizer" target="_blank" rel="noopener">auf GitHub ansehen &amp; beitragen</a>.',
+    'license.item2':  'Kostenlos nutzbar f\u00fcr jeden Zweck, auch f\u00fcr <strong>kommerzielle Arbeit</strong> (z.B. Texturierung von STLs f\u00fcr Kunden oder Produkte).',
+    'license.item3':  'Namensnennung wird <strong>gesch\u00e4tzt</strong>, ist aber bei der Nutzung dieses Tools <strong>nicht erforderlich</strong>.',
+    'license.item4':  'Das Tool selbst darf <strong>nicht</strong> verkauft oder kommerziell weitervertrieben werden.',
+    'license.item5':  'Forks oder abgeleitete Werke m\u00fcssen <strong>CNC Kitchen</strong> namentlich nennen und auf <a href="https://cnckitchen.store" target="_blank" rel="noopener">cnckitchen.store</a> verlinken.',
 
     // Sponsor modal
     'sponsor.title':           'Danke f\u00fcr die Nutzung des CNC Kitchen STL Texturizers!',
