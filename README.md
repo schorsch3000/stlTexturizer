@@ -8,7 +8,7 @@ Load any `.stl` file, pick a texture, tune the parameters, and export a new disp
 
 ## Features
 
-- **Texture presets** — 12 built-in seamless textures (basket, brick, bubble, crystal, hexagon, knitting, knurling, leather, weave, wood, noise, and more)
+- **Texture presets** — 17 built-in seamless textures (basket, brick, bubble, carbon fiber, crystal, grip surface, hexagons, knitting, knurling, leather, noise, voronoi, weave variations, wood, and more)
 - **Custom textures** — upload your own image as a displacement map
 - **Projection modes** — Triplanar, Cubic (Box), Cylindrical, Spherical, Planar XY/XZ/YZ
 - **UV transform** — independent U/V scale, offset, and rotation controls
