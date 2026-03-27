@@ -138,7 +138,7 @@ export const TRANSLATIONS = {
     'license.item6':  'The author shall not be held <strong>liable</strong> for any damages, data loss, or issues arising from the use of this tool.',
 
     // Sponsor modal
-    'sponsor.title':           'Thanks for using CNC Kitchen STL Texturizer!',
+    'sponsor.title':           'Thanks for using BumpMesh by CNC Kitchen!',
     'sponsor.body':            'This tool is provided <strong>completely free</strong> by CNC Kitchen.<br>While your STL is being processed, why not check out the store that helps us keep making cool stuff for you?',
     'sponsor.visitStore':      '\uD83D\uDED2 Visit CNCKitchen.STORE',
     'sponsor.donate':          '\uD83D\uDC99 Donate on PayPal',
@@ -290,8 +290,8 @@ export const TRANSLATIONS = {
     'license.item6':  'Der Autor haftet nicht f\u00fcr <strong>Sch\u00e4den</strong>, Datenverlust oder Probleme, die durch die Nutzung dieses Tools entstehen.',
 
     // Sponsor modal
-    'sponsor.title':           'Danke f\u00fcr die Nutzung des CNC Kitchen STL Texturizers!',
-    'sponsor.body':            'Dieses Tool wird von CNC Kitchen <strong>komplett kostenlos</strong> bereitgestellt.<br>W\u00e4hrend dein STL verarbeitet wird, schau doch mal im Shop vorbei, der uns hilft, coole Sachen f\u00fcr dich zu machen!',
+    'sponsor.title':           'Danke für die Nutzung von BumpMesh by CNC Kitchen!',
+    'sponsor.body':            'Dieses Tool wird von CNC Kitchen <strong>komplett kostenlos</strong> bereitgestellt.<br>Während dein STL verarbeitet wird, schau doch mal im Shop vorbei, der uns hilft, coole Sachen für dich zu machen!',
     'sponsor.visitStore':      '\uD83D\uDED2 CNCKitchen.STORE besuchen',
     'sponsor.donate':          '\uD83D\uDC99 Via PayPal spenden',
     'sponsor.dontShow':        'Nicht mehr anzeigen',

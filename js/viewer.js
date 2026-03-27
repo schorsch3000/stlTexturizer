@@ -149,7 +149,7 @@ export function initViewer(canvas) {
   scene.background = new THREE.Color(0x111114);
 
   // Grid helper — in XY plane (Z-up)
-  grid = new THREE.GridHelper(200, 40, 0x222228, 0x1e1e24);
+  grid = new THREE.GridHelper(200, 40, 0x333340, 0x2a2a34);
   grid.rotation.x = Math.PI / 2;  // rotate to XY plane for Z-up
   grid.position.z = 0;
   scene.add(grid);
@@ -452,8 +452,8 @@ export function setViewerTheme(isLight) {
   }
   grid = new THREE.GridHelper(
     200, 40,
-    isLight ? 0xb0b0c8 : 0x222228,
-    isLight ? 0xd0d0e0 : 0x1e1e24
+    isLight ? 0xb0b0c8 : 0x333340,
+    isLight ? 0xd0d0e0 : 0x2a2a34
   );
   grid.rotation.x = Math.PI / 2;
   grid.position.z = savedZ;
