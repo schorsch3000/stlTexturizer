@@ -120,11 +120,12 @@ export const TRANSLATIONS = {
     'tooltips.resolution':           'Edges longer than this value will be split during export',
     'labels.outputTriangles':        'Output Triangles',
     'tooltips.outputTriangles':      'Mesh is fully subdivided first, then decimated down to this count',
-    'warnings.safetyCapHit':         '\u26a0 10M-triangle safety cap hit during subdivision \u2014 result may still be coarser than requested edge length.',
+    'warnings.safetyCapHit':         '\u26a0 20M-triangle safety cap hit during subdivision \u2014 result may still be coarser than requested edge length.',
     'ui.exportStl':                  'Export STL',
 
     // Export progress stages
     'progress.subdividing':          'Subdividing mesh\u2026',
+    'progress.refining':             'Refining: {cur} triangles, longest edge {edge}',
     'progress.applyingDisplacement': 'Applying displacement to {n} triangles\u2026',
     'progress.displacingVertices':   'Displacing vertices\u2026',
     'progress.decimatingTo':         'Simplifying {from} \u2192 {to} triangles\u2026',
@@ -278,11 +279,12 @@ export const TRANSLATIONS = {
     'tooltips.resolution':           'Kanten l\u00e4nger als dieser Wert werden beim Export unterteilt',
     'labels.outputTriangles':        'Max Dreiecke',
     'tooltips.outputTriangles':      'Das Netz wird zuerst vollst\u00e4ndig unterteilt, dann auf diese Anzahl dezimiert',
-    'warnings.safetyCapHit':         '\u26a0 10-Mio.-Dreiecke-Sicherheitsgrenze bei der Unterteilung erreicht \u2014 Ergebnis kann gr\u00f6ber als gew\u00fcnschte Kantenl\u00e4nge sein.',
+    'warnings.safetyCapHit':         '\u26a0 20-Mio.-Dreiecke-Sicherheitsgrenze bei der Unterteilung erreicht \u2014 Ergebnis kann gr\u00f6ber als gew\u00fcnschte Kantenl\u00e4nge sein.',
     'ui.exportStl':                  'STL exportieren',
 
     // Export progress stages
     'progress.subdividing':          'Netz wird verfeinert\u2026',
+    'progress.refining':             'Verfeinern: {cur} Dreiecke, l\u00e4ngste Kante {edge}',
     'progress.applyingDisplacement': 'Textur auf {n} Dreiecke anwenden\u2026',
     'progress.displacingVertices':   'Punkte werden verschoben\u2026',
     'progress.decimatingTo':         '{from} \u2192 {to} Dreiecke vereinfachen\u2026',

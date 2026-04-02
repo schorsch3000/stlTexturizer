@@ -15,7 +15,7 @@
 import * as THREE from 'three';
 
 const QUANTISE   = 1e4;
-const SAFETY_CAP = 10_000_000; // absolute OOM guard
+const SAFETY_CAP = 20_000_000; // absolute OOM guard
 
 // ── Public entry point ───────────────────────────────────────────────────────
 
@@ -59,6 +59,19 @@ export async function subdivide(geometry, maxEdgeLength, onProgress, faceWeights
       break;
     }
 
+    // Find longest edge for progress reporting
+    let maxEdgeLenSq = 0;
+    for (let t = 0; t < currentIndices.length; t += 3) {
+      const a = currentIndices[t], b = currentIndices[t + 1], c = currentIndices[t + 2];
+      const ab = edgeLenSq(positions, a, b);
+      const bc = edgeLenSq(positions, b, c);
+      const ca = edgeLenSq(positions, c, a);
+      if (ab > maxEdgeLenSq) maxEdgeLenSq = ab;
+      if (bc > maxEdgeLenSq) maxEdgeLenSq = bc;
+      if (ca > maxEdgeLenSq) maxEdgeLenSq = ca;
+    }
+    const longestEdge = Math.sqrt(maxEdgeLenSq);
+
     const { newIndices, newFaceExcluded, newFaceParentId, changed } = subdividePass(
       positions, normals, weights, currentIndices, maxEdgeLength, SAFETY_CAP, currentFaceExcluded,
       canonIdx, posCanonMap, currentFaceParentId
@@ -69,7 +82,8 @@ export async function subdivide(geometry, maxEdgeLength, onProgress, faceWeights
 
     if (newIndices.length / 3 >= SAFETY_CAP) safetyCapHit = true;
 
-    if (onProgress) onProgress(Math.min(0.95, (iter + 1) / maxIterations));
+    const newTriCount = newIndices.length / 3;
+    if (onProgress) onProgress(Math.min(0.95, (iter + 1) / maxIterations), newTriCount, longestEdge);
     await new Promise(r => setTimeout(r, 0));
     if (!changed || safetyCapHit) break;
   }

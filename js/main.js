@@ -1701,7 +1701,12 @@ async function handleExport() {
 
     const { geometry: subdivided, safetyCapHit } = await subdivide(
       currentGeometry, settings.refineLength,
-      (p) => setProgress(0.02 + p * 0.35, t('progress.subdividing')),
+      (p, triCount, longestEdge) => {
+        const label = triCount != null
+          ? t('progress.refining', { cur: triCount.toLocaleString(), edge: longestEdge.toFixed(2) })
+          : t('progress.subdividing');
+        setProgress(0.02 + p * 0.35, label);
+      },
       faceWeights
     );
 
