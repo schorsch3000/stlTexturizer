@@ -12,7 +12,7 @@ import { decimate }           from './decimation.js';
 import { exportSTL }          from './exporter.js';
 import { buildAdjacency, bucketFill,
          buildExclusionOverlayGeo, buildFaceWeights } from './exclusion.js';
-import { t, initLang, setLang, getLang, applyTranslations } from './i18n.js';
+import { t, initLang, setLang, getLang, applyTranslations, TRANSLATIONS } from './i18n.js';
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,12 @@ let activeMapEntry    = null;   // { name, texture, imageData, width, height, is
 let previewMaterial   = null;
 let isExporting       = false;
 let previewDebounce   = null;
+
+// Boundary edge data texture for per-fragment falloff in bump-only preview
+let _boundaryEdgeTex   = null;
+let _boundaryEdgeCount = 0;
+let _falloffDirty      = true;   // recompute falloff on next updateFaceMask
+let _falloffGeometry   = null;   // geometry the falloff was last computed for
 
 // ── Exclusion state ───────────────────────────────────────────────────────────
 let excludedFaces      = new Set();   // triangle indices in currentGeometry
@@ -62,6 +68,7 @@ const settings = {
   seamBandWidth:    0.5,
   textureSmoothing: 0,
   capAngle:         20,
+  boundaryFalloff:  0,
   symmetricDisplacement: false,
   useDisplacement: false,
 };
@@ -207,6 +214,8 @@ const textureSmoothingVal    = document.getElementById('texture-smoothing-val');
 const capAngleSlider         = document.getElementById('cap-angle');
 const capAngleVal            = document.getElementById('cap-angle-val');
 const capAngleRow            = document.getElementById('cap-angle-row');
+const boundaryFalloffSlider    = document.getElementById('boundary-falloff');
+const boundaryFalloffVal       = document.getElementById('boundary-falloff-val');
 const symmetricDispToggle    = document.getElementById('symmetric-displacement');
 const dispPreviewToggle      = document.getElementById('displacement-preview');
 
@@ -245,6 +254,9 @@ const imprintLink    = document.getElementById('imprint-link');
 const imprintOverlay = document.getElementById('imprint-overlay');
 const imprintClose   = document.getElementById('imprint-close');
 
+// ── Language selector DOM refs ────────────────────────────────────────────────────
+const languageSelector = document.querySelector('.lang-seg');
+
 // ── Scale slider log helpers ──────────────────────────────────────────────────
 // Slider stores 0–1000; actual scale spans 0.05–10 on a log axis.
 // Middle position 500 → scale ~0.71 (log midpoint between 0.05 and 10).
@@ -271,15 +283,46 @@ initViewer(canvas);
 // Apply saved theme to 3D viewport on startup
 setViewerTheme(document.documentElement.getAttribute('data-theme') === 'light');
 
+// Populate the language selector
+function populateLanguageSelector() {
+  if (!languageSelector) return;
+  languageSelector.innerHTML = '';
+  
+  const select = document.createElement('select');
+  select.className = 'lang-dropdown';
+  
+  for (const langKey in TRANSLATIONS) {
+    const opt = document.createElement('option');
+    opt.value = langKey;
+    opt.className = 'lang-option';
+    opt.textContent = TRANSLATIONS[langKey]['lang.name'] || langKey.toUpperCase();
+    select.appendChild(opt);
+  }
+  
+  select.addEventListener('change', (e) => {
+    setLang(e.target.value);
+    // Re-translate <option> elements (innerHTML won't reach these)
+    document.querySelectorAll('select[id="mapping-mode"] option[data-i18n-opt]').forEach(opt => {
+      opt.textContent = t(opt.dataset.i18nOpt);
+    });
+    // Refresh dynamic count text to current language
+    if (currentGeometry) refreshExclusionOverlay();
+  });
+  
+  languageSelector.appendChild(select);
+}
+populateLanguageSelector();
+
 // Initialise language (reads localStorage / browser preference, applies translations)
 initLang();
 
-// Sync lang buttons to current language
+// Sync lang dropdown to current language
 (function() {
   const lang = getLang();
-  document.querySelectorAll('.lang-btn').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.langCode === lang);
-  });
+  const select = languageSelector.querySelector('select');
+  if (select) {
+    select.value = lang;
+  }
 })();
 
 // Theme toggle
@@ -380,22 +423,6 @@ function trapFocus(overlay) {
 // ── Event wiring ──────────────────────────────────────────────────────────────
 
 function wireEvents() {
-  // ── Language toggle ──
-  document.querySelectorAll('.lang-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const lang = btn.dataset.langCode;
-      setLang(lang);
-      document.querySelectorAll('.lang-btn').forEach(b =>
-        b.classList.toggle('active', b.dataset.langCode === lang));
-      // Re-translate <option> elements (innerHTML won't reach these)
-      document.querySelectorAll('select[id="mapping-mode"] option[data-i18n-opt]').forEach(opt => {
-        opt.textContent = t(opt.dataset.i18nOpt);
-      });
-      // Refresh dynamic count text to current language
-      if (currentGeometry) refreshExclusionOverlay();
-    });
-  });
-
   // ── Model loading ──
   stlFileInput.addEventListener('change', (e) => {
     if (e.target.files[0]) handleModelFile(e.target.files[0]);
@@ -479,10 +506,11 @@ function wireEvents() {
   linkSlider(rotationSlider,  rotationVal,  v => { settings.rotation  = v; return Math.round(v); });
   linkSlider(amplitudeSlider, amplitudeVal, v => { settings.amplitude = v; checkAmplitudeWarning(); return v.toFixed(2); });
   amplitudeVal.addEventListener('change', checkAmplitudeWarning);
+  linkSlider(boundaryFalloffSlider, boundaryFalloffVal, v => { settings.boundaryFalloff = v; _falloffDirty = true; return v.toFixed(1); });
   linkSlider(refineLenSlider, refineLenVal, v => { settings.refineLength  = v; return v.toFixed(2); }, false);
   linkSlider(maxTriSlider, maxTriVal, v => { settings.maxTriangles = v; return formatM(v); }, false);
-  linkSlider(bottomAngleLimitSlider, bottomAngleLimitVal, v => { settings.bottomAngleLimit = v; return v; });
-  linkSlider(topAngleLimitSlider,    topAngleLimitVal,    v => { settings.topAngleLimit    = v; return v; });
+  linkSlider(bottomAngleLimitSlider, bottomAngleLimitVal, v => { settings.bottomAngleLimit = v; _falloffDirty = true; return v; });
+  linkSlider(topAngleLimitSlider,    topAngleLimitVal,    v => { settings.topAngleLimit    = v; _falloffDirty = true; return v; });
   linkSlider(seamBlendSlider,        seamBlendVal,        v => { settings.mappingBlend     = v; return v.toFixed(2); });
   linkSlider(seamBandWidthSlider,    seamBandWidthVal,    v => { settings.seamBandWidth    = v; return v.toFixed(2); });
   linkSlider(textureSmoothingSlider, textureSmoothingVal, v => { settings.textureSmoothing = v; return v.toFixed(1); });
@@ -718,7 +746,7 @@ function wireEvents() {
         if (placeOnFaceActive && currentGeometry) { updatePlaceOnFaceHover(ev); return; }
         if (exclusionTool === 'brush') {
           updateBrushCursor(ev);
-          if (brushIsRadius && !isPainting && currentGeometry) updateBrushHover(ev);
+          if (!isPainting && currentGeometry) updateBrushHover(ev);
           _updateShiftLinePreview(ev);
         } else if (exclusionTool === 'bucket' && !isPainting && currentGeometry) {
           updateBucketHover(ev);
@@ -809,6 +837,14 @@ function setExclusionTool(tool) {
   if (!exclusionTool) {
     isPainting = false;
     getControls().enabled = true;
+    // Recompute boundary falloff now that masking is done
+    if (_falloffDirty && currentGeometry) {
+      const activeGeo = (precisionMaskingEnabled && precisionGeometry)
+        ? precisionGeometry
+        : (settings.useDisplacement && dispPreviewGeometry)
+          ? dispPreviewGeometry : currentGeometry;
+      updateFaceMask(activeGeo);
+    }
   }
 }
 
@@ -1222,8 +1258,8 @@ function handlePlaceOnFaceClick(e) {
   buildSpatialGrid(triangleCentroids, currentGeometry.attributes.position.count / 3, currentBounds);
 
   // Update edge length for new bounds
-  const maxDim = Math.max(currentBounds.size.x, currentBounds.size.y, currentBounds.size.z);
-  const defaultEdge = Math.max(0.05, Math.min(5.0, +(maxDim / 200).toFixed(2)));
+  const diag = Math.sqrt(currentBounds.size.x ** 2 + currentBounds.size.y ** 2 + currentBounds.size.z ** 2);
+  const defaultEdge = Math.max(0.05, Math.min(5.0, +(diag / 300).toFixed(2)));
   settings.refineLength = defaultEdge;
   refineLenSlider.value = defaultEdge;
   refineLenVal.value = defaultEdge;
@@ -1258,12 +1294,11 @@ function refreshExclusionOverlay() {
   const overlayGeo = usePrecision ? precisionGeometry : currentGeometry;
   const overlayFaceSet = usePrecision ? precisionExcludedFaces : excludedFaces;
 
-  if (selectionMode) {
-    const maskGeo = buildExclusionOverlayGeo(overlayGeo, overlayFaceSet, true);
-    setExclusionOverlay(maskGeo, 0x8ab4d4, 0.96);
-  } else {
-    setExclusionOverlay(buildExclusionOverlayGeo(overlayGeo, overlayFaceSet), 0xff6600);
-  }
+  _falloffDirty = true;
+
+  // Never show the flat-coloured MeshLambertMaterial overlay — the custom
+  // shader handles mask visualisation with smooth, view-dependent shading.
+  setExclusionOverlay(null);
   const n = usePrecision ? precisionExcludedFaces.size : excludedFaces.size;
   exclCount.textContent = selectionMode
     ? t(n === 1 ? 'excl.faceSelected' : 'excl.facesSelected', { n: n.toLocaleString() })
@@ -1482,8 +1517,8 @@ function loadDefaultCube() {
   settings.offsetV = 0; offsetVSlider.value = 0; offsetVVal.value = 0;
   triLimitWarning.classList.add('hidden');
 
-  const maxDim = Math.max(currentBounds.size.x, currentBounds.size.y, currentBounds.size.z);
-  const defaultEdge = Math.max(0.05, Math.min(5.0, +(maxDim / 200).toFixed(2)));
+  const diag = Math.sqrt(currentBounds.size.x ** 2 + currentBounds.size.y ** 2 + currentBounds.size.z ** 2);
+  const defaultEdge = Math.max(0.05, Math.min(5.0, +(diag / 250).toFixed(2)));
   settings.refineLength = defaultEdge;
   refineLenSlider.value = defaultEdge;
   refineLenVal.value = defaultEdge;
@@ -1582,9 +1617,9 @@ async function handleModelFile(file) {
     settings.offsetV = 0; resetVal(offsetVSlider, offsetVVal, 0);
     triLimitWarning.classList.add('hidden');
 
-    // Default edge length = 1/200 of the largest bounding box dimension
-    const maxDim = Math.max(bounds.size.x, bounds.size.y, bounds.size.z);
-    const defaultEdge = Math.max(0.05, Math.min(5.0, +(maxDim / 200).toFixed(2)));
+    // Default edge length = 1/250 of the bounding box diagonal
+    const diag = Math.sqrt(bounds.size.x ** 2 + bounds.size.y ** 2 + bounds.size.z ** 2);
+    const defaultEdge = Math.max(0.05, Math.min(5.0, +(diag / 250).toFixed(2)));
     settings.refineLength = defaultEdge;
     refineLenSlider.value = defaultEdge;
     refineLenVal.value = defaultEdge;
@@ -1669,7 +1704,358 @@ function updateFaceMask(geometry) {
   if (!geometry.attributes.faceNormal) {
     addFaceNormals(geometry);
   }
+
+  // Ensure falloff attributes exist so the shader doesn't read 0.0 for missing
+  // attributes (which would make totalMask = 0 → entire model appears masked).
+  // This matters when a fresh geometry is displayed while the masking tool is
+  // active (e.g. entering precision mode) because the expensive recomputation
+  // below is intentionally skipped during active masking.
+  if (!geometry.attributes.boundaryFalloffAttr) {
+    const arr = new Float32Array(posCount);
+    arr.fill(1.0);
+    geometry.setAttribute('boundaryFalloffAttr', new THREE.Float32BufferAttribute(arr, 1));
+  }
+  if (!geometry.attributes.boundaryMaskTypeAttr) {
+    const arr = new Float32Array(posCount);
+    arr.fill(1.0);
+    geometry.setAttribute('boundaryMaskTypeAttr', new THREE.Float32BufferAttribute(arr, 1));
+  }
+
+  // Skip expensive per-vertex falloff and boundary edge recomputation while
+  // actively masking; both will be recalculated when the masking tool is
+  // deactivated (in setExclusionTool → updateFaceMask with exclusionTool=null).
+  if (!exclusionTool && (_falloffDirty || geometry !== _falloffGeometry)) {
+    computeBoundaryFalloffAttr(geometry, maskArr);
+    computeBoundaryEdges(geometry, maskArr);
+    _falloffDirty = false;
+    _falloffGeometry = geometry;
+  }
+  syncBoundaryEdgeUniforms();
   requestRender();
+}
+
+/**
+ * Compute a per-vertex `boundaryFalloffAttr` float attribute on the geometry.
+ * Vertices near the boundary between masked and non-masked regions get values
+ * ramping from 0 (at boundary) to 1 (at or beyond boundaryFalloff distance).
+ * The shader multiplies displacement/bump by this attribute.
+ *
+ * @param {THREE.BufferGeometry} geometry
+ * @param {Float32Array}         userMaskArr – per-vertex user-exclusion mask from updateFaceMask
+ */
+function computeBoundaryFalloffAttr(geometry, userMaskArr) {
+  const posAttr = geometry.attributes.position;
+  const posCount = posAttr.count;
+  const triCount = posCount / 3;
+  const falloff = settings.boundaryFalloff ?? 0;
+
+  // Reuse existing attribute buffers when sizes match to avoid Three.js
+  // WebGL binding state cache issues when replacing attribute objects on
+  // a geometry that is already attached to a rendered mesh.
+  const existingFalloff = geometry.getAttribute('boundaryFalloffAttr');
+  const reuseFalloff = existingFalloff && existingFalloff.array.length === posCount;
+  const falloffArr = reuseFalloff ? existingFalloff.array : new Float32Array(posCount);
+  falloffArr.fill(1.0);
+
+  const existingType = geometry.getAttribute('boundaryMaskTypeAttr');
+  const reuseType = existingType && existingType.array.length === posCount;
+  const maskTypeArr = reuseType ? existingType.array : new Float32Array(posCount);
+  maskTypeArr.fill(1.0);
+
+  if (falloff <= 0) {
+    if (reuseFalloff) existingFalloff.needsUpdate = true;
+    else geometry.setAttribute('boundaryFalloffAttr', new THREE.Float32BufferAttribute(falloffArr, 1));
+    if (reuseType) existingType.needsUpdate = true;
+    else geometry.setAttribute('boundaryMaskTypeAttr', new THREE.Float32BufferAttribute(maskTypeArr, 1));
+    return;
+  }
+
+  // Compute per-face combined mask (angle masking + user exclusion).
+  // Mirrors the vertex shader logic so the preview boundary matches export.
+  const faceNrmAttr = geometry.attributes.faceNormal;
+  const faceMask = new Float32Array(triCount); // 0 = masked, 1 = textured
+  const isUserMasked = new Uint8Array(triCount); // 1 if user-excluded
+  for (let t = 0; t < triCount; t++) {
+    const userVal = userMaskArr[t * 3]; // same for all 3 verts of this face
+    if (userVal < 0.5) { faceMask[t] = 0; isUserMasked[t] = 1; continue; }
+
+    let angleMask = 1.0;
+    if (faceNrmAttr) {
+      const fnz = faceNrmAttr.getZ(t * 3);
+      const fnx = faceNrmAttr.getX(t * 3);
+      const fny = faceNrmAttr.getY(t * 3);
+      const len = Math.sqrt(fnx * fnx + fny * fny + fnz * fnz);
+      const nz = len > 1e-6 ? fnz / len : 0;
+      const surfaceAngle = Math.acos(Math.min(1, Math.abs(nz))) * (180 / Math.PI);
+      if (nz < 0 && settings.bottomAngleLimit >= 1)
+        angleMask = surfaceAngle > settings.bottomAngleLimit ? 1.0 : 0.0;
+      if (nz >= 0 && settings.topAngleLimit >= 1)
+        angleMask = Math.min(angleMask, surfaceAngle > settings.topAngleLimit ? 1.0 : 0.0);
+    }
+    faceMask[t] = angleMask;
+  }
+
+  // Build per-unique-position map and identify boundary positions.
+  const QUANT = 1e4;
+  const posKey = (x, y, z) =>
+    `${Math.round(x * QUANT)}_${Math.round(y * QUANT)}_${Math.round(z * QUANT)}`;
+
+  const posFromKey = new Map();  // posKey → [x, y, z]
+  // Per-position: [maskedArea, totalArea] to find boundary vertices
+  const maskFracMap = new Map();
+  const userMaskAreaMap = new Map(); // posKey → area of user-masked faces
+  const tmpV = new THREE.Vector3();
+  const vA = new THREE.Vector3(), vB = new THREE.Vector3(), vC = new THREE.Vector3();
+  const e1 = new THREE.Vector3(), e2 = new THREE.Vector3(), fn = new THREE.Vector3();
+
+  for (let t = 0; t < triCount; t++) {
+    vA.fromBufferAttribute(posAttr, t * 3);
+    vB.fromBufferAttribute(posAttr, t * 3 + 1);
+    vC.fromBufferAttribute(posAttr, t * 3 + 2);
+    e1.subVectors(vB, vA);
+    e2.subVectors(vC, vA);
+    fn.crossVectors(e1, e2);
+    const area = fn.length();
+    const masked = faceMask[t] < 0.5;
+
+    for (let v = 0; v < 3; v++) {
+      tmpV.fromBufferAttribute(posAttr, t * 3 + v);
+      const k = posKey(tmpV.x, tmpV.y, tmpV.z);
+      if (!posFromKey.has(k)) posFromKey.set(k, [tmpV.x, tmpV.y, tmpV.z]);
+      const mf = maskFracMap.get(k);
+      if (mf) {
+        if (masked) mf[0] += area;
+        mf[1] += area;
+      } else {
+        maskFracMap.set(k, [masked ? area : 0, area]);
+      }
+      // Track user-mask area per position to classify boundary type
+      if (isUserMasked[t]) {
+        const prev = userMaskAreaMap.get(k) || 0;
+        userMaskAreaMap.set(k, prev + area);
+      }
+    }
+  }
+
+  // Boundary positions: shared between masked and non-masked faces.
+  // Each entry: [x, y, z, maskType] where maskType 0 = user, 1 = angle.
+  const boundaryPositions = [];
+  for (const [k, pos] of posFromKey) {
+    const mf = maskFracMap.get(k);
+    const frac = mf[1] > 0 ? mf[0] / mf[1] : 0;
+    if (frac > 0 && frac < 1) {
+      const userArea = userMaskAreaMap.get(k) || 0;
+      boundaryPositions.push([pos[0], pos[1], pos[2], userArea > 0 ? 0 : 1]);
+    }
+  }
+
+  if (boundaryPositions.length === 0) {
+    if (reuseFalloff) existingFalloff.needsUpdate = true;
+    else geometry.setAttribute('boundaryFalloffAttr', new THREE.Float32BufferAttribute(falloffArr, 1));
+    if (reuseType) existingType.needsUpdate = true;
+    else geometry.setAttribute('boundaryMaskTypeAttr', new THREE.Float32BufferAttribute(maskTypeArr, 1));
+    return;
+  }
+
+  // Spatial grid of boundary positions for fast nearest-neighbor search
+  let gMinX = Infinity, gMinY = Infinity, gMinZ = Infinity;
+  let gMaxX = -Infinity, gMaxY = -Infinity, gMaxZ = -Infinity;
+  for (const bp of boundaryPositions) {
+    if (bp[0] < gMinX) gMinX = bp[0]; if (bp[0] > gMaxX) gMaxX = bp[0];
+    if (bp[1] < gMinY) gMinY = bp[1]; if (bp[1] > gMaxY) gMaxY = bp[1];
+    if (bp[2] < gMinZ) gMinZ = bp[2]; if (bp[2] > gMaxZ) gMaxZ = bp[2];
+  }
+  const gPad = falloff + 1e-3;
+  gMinX -= gPad; gMinY -= gPad; gMinZ -= gPad;
+  gMaxX += gPad; gMaxY += gPad; gMaxZ += gPad;
+
+  const gRes = Math.max(4, Math.min(128, Math.ceil(Math.cbrt(boundaryPositions.length) * 2)));
+  const gDx = (gMaxX - gMinX) / gRes || 1;
+  const gDy = (gMaxY - gMinY) / gRes || 1;
+  const gDz = (gMaxZ - gMinZ) / gRes || 1;
+  const bGrid = new Map();
+  const bCellKey = (ix, iy, iz) => (ix * gRes + iy) * gRes + iz;
+
+  for (const bp of boundaryPositions) {
+    const ix = Math.max(0, Math.min(gRes - 1, Math.floor((bp[0] - gMinX) / gDx)));
+    const iy = Math.max(0, Math.min(gRes - 1, Math.floor((bp[1] - gMinY) / gDy)));
+    const iz = Math.max(0, Math.min(gRes - 1, Math.floor((bp[2] - gMinZ) / gDz)));
+    const ck = bCellKey(ix, iy, iz);
+    const cell = bGrid.get(ck);
+    if (cell) cell.push(bp); else bGrid.set(ck, [bp]);
+  }
+
+  const searchX = Math.ceil(falloff / gDx);
+  const searchY = Math.ceil(falloff / gDy);
+  const searchZ = Math.ceil(falloff / gDz);
+
+  // Compute per-unique-position falloff factor and mask type
+  const falloffCache = new Map(); // posKey → factor [0,1]
+  const maskTypeCache = new Map(); // posKey → 0 (user mask) or 1 (angle mask)
+  for (const [k, pos] of posFromKey) {
+    const mf = maskFracMap.get(k);
+    const frac = mf[1] > 0 ? mf[0] / mf[1] : 0;
+    if (frac >= 1) continue; // fully masked vertex — keep 1.0 (mask zeroes it anyway)
+    // Boundary vertices (shared between masked and unmasked faces) are AT
+    // the boundary → distance 0 → falloff factor 0.
+    if (frac > 0) {
+      falloffCache.set(k, 0);
+      const userArea = userMaskAreaMap.get(k) || 0;
+      maskTypeCache.set(k, userArea > 0 ? 0 : 1);
+      continue;
+    }
+
+    const px = pos[0], py = pos[1], pz = pos[2];
+    const cix = Math.max(0, Math.min(gRes - 1, Math.floor((px - gMinX) / gDx)));
+    const ciy = Math.max(0, Math.min(gRes - 1, Math.floor((py - gMinY) / gDy)));
+    const ciz = Math.max(0, Math.min(gRes - 1, Math.floor((pz - gMinZ) / gDz)));
+
+    let minDist2 = falloff * falloff;
+    let nearestType = 1; // default: angle mask
+    for (let dix = -searchX; dix <= searchX; dix++) {
+      const nix = cix + dix;
+      if (nix < 0 || nix >= gRes) continue;
+      for (let diy = -searchY; diy <= searchY; diy++) {
+        const niy = ciy + diy;
+        if (niy < 0 || niy >= gRes) continue;
+        for (let diz = -searchZ; diz <= searchZ; diz++) {
+          const niz = ciz + diz;
+          if (niz < 0 || niz >= gRes) continue;
+          const cell = bGrid.get(bCellKey(nix, niy, niz));
+          if (!cell) continue;
+          for (const bp of cell) {
+            const dx = px - bp[0], dy = py - bp[1], dz = pz - bp[2];
+            const d2 = dx * dx + dy * dy + dz * dz;
+            if (d2 < minDist2) { minDist2 = d2; nearestType = bp[3]; }
+          }
+        }
+      }
+    }
+    const dist = Math.sqrt(minDist2);
+    const factor = Math.min(1, dist / falloff);
+    if (factor < 1) {
+      falloffCache.set(k, factor);
+      maskTypeCache.set(k, nearestType);
+    }
+  }
+
+  // Write per-vertex attributes
+  for (let i = 0; i < posCount; i++) {
+    tmpV.fromBufferAttribute(posAttr, i);
+    const k = posKey(tmpV.x, tmpV.y, tmpV.z);
+    if (falloffCache.has(k)) falloffArr[i] = falloffCache.get(k);
+    if (maskTypeCache.has(k)) maskTypeArr[i] = maskTypeCache.get(k);
+  }
+
+  if (reuseFalloff) existingFalloff.needsUpdate = true;
+  else geometry.setAttribute('boundaryFalloffAttr', new THREE.Float32BufferAttribute(falloffArr, 1));
+  if (reuseType) existingType.needsUpdate = true;
+  else geometry.setAttribute('boundaryMaskTypeAttr', new THREE.Float32BufferAttribute(maskTypeArr, 1));
+}
+
+/**
+ * Compute boundary edge segments between masked and non-masked faces and
+ * pack them into a DataTexture for per-fragment distance queries in the
+ * bump-only preview shader.  Each edge is stored as two RGBA texels
+ * (endpoint A xyz, endpoint B xyz).
+ */
+function computeBoundaryEdges(geometry, userMaskArr) {
+  const posAttr = geometry.attributes.position;
+  const posCount = posAttr.count;
+  const triCount = posCount / 3;
+  const falloff = settings.boundaryFalloff ?? 0;
+
+  if (_boundaryEdgeTex) { _boundaryEdgeTex.dispose(); _boundaryEdgeTex = null; }
+  _boundaryEdgeCount = 0;
+  if (falloff <= 0) return;
+
+  const faceNrmAttr = geometry.attributes.faceNormal;
+  const faceMaskBool = new Uint8Array(triCount);
+  for (let t = 0; t < triCount; t++) {
+    if (userMaskArr[t * 3] < 0.5) { faceMaskBool[t] = 0; continue; }
+    let angleMask = 1.0;
+    if (faceNrmAttr) {
+      const fnx = faceNrmAttr.getX(t * 3);
+      const fny = faceNrmAttr.getY(t * 3);
+      const fnz = faceNrmAttr.getZ(t * 3);
+      const len = Math.sqrt(fnx * fnx + fny * fny + fnz * fnz);
+      const nz = len > 1e-6 ? fnz / len : 0;
+      const surfAngle = Math.acos(Math.min(1, Math.abs(nz))) * (180 / Math.PI);
+      if (nz < 0 && settings.bottomAngleLimit >= 1)
+        angleMask = surfAngle > settings.bottomAngleLimit ? 1.0 : 0.0;
+      if (nz >= 0 && settings.topAngleLimit >= 1)
+        angleMask = Math.min(angleMask, surfAngle > settings.topAngleLimit ? 1.0 : 0.0);
+    }
+    faceMaskBool[t] = angleMask > 0.5 ? 1 : 0;
+  }
+
+  const QUANT = 1e4;
+  const pk = (x, y, z) =>
+    `${Math.round(x * QUANT)}_${Math.round(y * QUANT)}_${Math.round(z * QUANT)}`;
+  const ek = (k1, k2) => k1 < k2 ? k1 + '|' + k2 : k2 + '|' + k1;
+  const tmpV = new THREE.Vector3();
+
+  const edgeFaces = new Map();
+  const edgePos   = new Map();
+
+  for (let t = 0; t < triCount; t++) {
+    const keys = [], pts = [];
+    for (let v = 0; v < 3; v++) {
+      tmpV.fromBufferAttribute(posAttr, t * 3 + v);
+      keys.push(pk(tmpV.x, tmpV.y, tmpV.z));
+      pts.push([tmpV.x, tmpV.y, tmpV.z]);
+    }
+    for (let e = 0; e < 3; e++) {
+      const edgeKey = ek(keys[e], keys[(e + 1) % 3]);
+      const list = edgeFaces.get(edgeKey);
+      if (list) list.push(t);
+      else {
+        edgeFaces.set(edgeKey, [t]);
+        edgePos.set(edgeKey, [pts[e], pts[(e + 1) % 3]]);
+      }
+    }
+  }
+
+  const MAX_EDGES = 64;
+  const edges = [];
+  for (const [key, faces] of edgeFaces) {
+    if (edges.length >= MAX_EDGES) break;
+    let hasMasked = false, hasTextured = false;
+    for (const f of faces) {
+      if (faceMaskBool[f] === 0) hasMasked = true;
+      else hasTextured = true;
+      if (hasMasked && hasTextured) break;
+    }
+    if (hasMasked && hasTextured) edges.push(edgePos.get(key));
+  }
+
+  if (edges.length === 0) return;
+
+  const texWidth = edges.length * 2;
+  const data = new Float32Array(texWidth * 4);
+  for (let i = 0; i < edges.length; i++) {
+    const [a, b] = edges[i];
+    const off = i * 8;
+    data[off] = a[0]; data[off + 1] = a[1]; data[off + 2] = a[2]; data[off + 3] = 0;
+    data[off + 4] = b[0]; data[off + 5] = b[1]; data[off + 6] = b[2]; data[off + 7] = 0;
+  }
+
+  _boundaryEdgeTex = new THREE.DataTexture(data, texWidth, 1, THREE.RGBAFormat, THREE.FloatType);
+  _boundaryEdgeTex.minFilter = THREE.NearestFilter;
+  _boundaryEdgeTex.magFilter = THREE.NearestFilter;
+  _boundaryEdgeTex.needsUpdate = true;
+  _boundaryEdgeCount = edges.length;
+}
+
+function syncBoundaryEdgeUniforms() {
+  if (!previewMaterial || !previewMaterial.uniforms.boundaryEdgeTex) return;
+  const u = previewMaterial.uniforms;
+  if (_boundaryEdgeTex) {
+    u.boundaryEdgeTex.value = _boundaryEdgeTex;
+    u.boundaryEdgeTexWidth.value = _boundaryEdgeTex.image.width;
+  }
+  u.boundaryEdgeCount.value = _boundaryEdgeCount;
+  u.boundaryFalloffDist.value = settings.boundaryFalloff ?? 0;
 }
 
 /**
@@ -1887,6 +2273,7 @@ function updatePreview() {
     updateMaterial(previewMaterial, effectiveEntry.texture, fullSettings);
   }
 
+  syncBoundaryEdgeUniforms();
   exportBtn.disabled = false;
 }
 
@@ -2046,7 +2433,6 @@ function deactivatePrecisionMasking() {
     excludedFaces = precisionExcludedFaces;
 
     // Update mesh info display
-    const triCount = getTriangleCount(currentGeometry);
     const mb = ((currentGeometry.attributes.position.array.byteLength) / 1024 / 1024).toFixed(2);
     const sx = currentBounds.size.x.toFixed(2);
     const sy = currentBounds.size.y.toFixed(2);
@@ -2138,6 +2524,18 @@ async function refreshPrecisionMesh() {
     // Swap display mesh to refined geometry
     setMeshGeometry(precisionGeometry);
     updateFaceMask(precisionGeometry);
+    // Force per-vertex falloff computation on the fresh geometry even though
+    // the masking tool is still active – updateFaceMask only computes boundary
+    // edges during painting; the full vertex-level falloff is deferred until
+    // the tool is deactivated, but we need it now for the initial state.
+    {
+      const maskAttr = precisionGeometry.getAttribute('faceMask');
+      if (maskAttr) {
+        computeBoundaryFalloffAttr(precisionGeometry, maskAttr.array);
+        _falloffDirty = false;
+        _falloffGeometry = precisionGeometry;
+      }
+    }
     if (precisionExcludedFaces.size > 0) refreshExclusionOverlay();
     else setExclusionOverlay(null);
 

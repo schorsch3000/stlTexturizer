@@ -181,6 +181,119 @@ export function applyDisplacement(geometry, imageData, imgWidth, imgHeight, sett
     smoothNrmX[id] /= len; smoothNrmY[id] /= len; smoothNrmZ[id] /= len;
   }
 
+  // ── Boundary falloff distance field ──────────────────────────────────────────
+  // When boundaryFalloff > 0, identify boundary positions (vertices adjacent to
+  // both masked and unmasked faces, or on the user-exclusion seam) and compute
+  // the Euclidean distance from every fully-textured vertex to its nearest
+  // boundary position.  The result is falloffArr: Float64Array[uniqueCount]
+  // where 0 means "at the boundary" and 1 means "at or beyond the falloff distance".
+  const boundaryFalloff = settings.boundaryFalloff ?? 0;
+  let falloffArr = null;
+
+  if (boundaryFalloff > 0) {
+    // Build position lookup per unique vertex ID (first occurrence)
+    const idPosX = new Float64Array(uniqueCount);
+    const idPosY = new Float64Array(uniqueCount);
+    const idPosZ = new Float64Array(uniqueCount);
+    const idPosSeen = new Uint8Array(uniqueCount);
+    for (let i = 0; i < count; i++) {
+      const vid = vertexId[i];
+      if (!idPosSeen[vid]) {
+        idPosSeen[vid] = 1;
+        idPosX[vid] = posAttr.getX(i);
+        idPosY[vid] = posAttr.getY(i);
+        idPosZ[vid] = posAttr.getZ(i);
+      }
+    }
+
+    const boundaryPositions = []; // [[x, y, z], ...]
+
+    // Collect boundary positions: vertices where maskedFrac is between 0 and 1,
+    // or that sit on the user-exclusion seam.
+    for (let id = 0; id < uniqueCount; id++) {
+      const mfTotal = maskedFracTotal[id];
+      const maskedFrac = mfTotal > 0 ? maskedFracMasked[id] / mfTotal : 0;
+      const isOnExclBoundary = excludedPos && excludedPos[id] === 1;
+      if (isOnExclBoundary || (maskedFrac > 0 && maskedFrac < 1)) {
+        boundaryPositions.push([idPosX[id], idPosY[id], idPosZ[id]]);
+      }
+    }
+
+    if (boundaryPositions.length > 0) {
+      // Build a spatial grid of boundary positions for fast nearest-neighbor lookup
+      let gMinX = Infinity, gMinY = Infinity, gMinZ = Infinity;
+      let gMaxX = -Infinity, gMaxY = -Infinity, gMaxZ = -Infinity;
+      for (const bp of boundaryPositions) {
+        if (bp[0] < gMinX) gMinX = bp[0]; if (bp[0] > gMaxX) gMaxX = bp[0];
+        if (bp[1] < gMinY) gMinY = bp[1]; if (bp[1] > gMaxY) gMaxY = bp[1];
+        if (bp[2] < gMinZ) gMinZ = bp[2]; if (bp[2] > gMaxZ) gMaxZ = bp[2];
+      }
+      const gPad = boundaryFalloff + 1e-3;
+      gMinX -= gPad; gMinY -= gPad; gMinZ -= gPad;
+      gMaxX += gPad; gMaxY += gPad; gMaxZ += gPad;
+
+      const gRes = Math.max(4, Math.min(128, Math.ceil(Math.cbrt(boundaryPositions.length) * 2)));
+      const gDx = (gMaxX - gMinX) / gRes || 1;
+      const gDy = (gMaxY - gMinY) / gRes || 1;
+      const gDz = (gMaxZ - gMinZ) / gRes || 1;
+      const bGrid = new Map();
+      const bCellKey = (ix, iy, iz) => (ix * gRes + iy) * gRes + iz;
+
+      for (const bp of boundaryPositions) {
+        const ix = Math.max(0, Math.min(gRes - 1, Math.floor((bp[0] - gMinX) / gDx)));
+        const iy = Math.max(0, Math.min(gRes - 1, Math.floor((bp[1] - gMinY) / gDy)));
+        const iz = Math.max(0, Math.min(gRes - 1, Math.floor((bp[2] - gMinZ) / gDz)));
+        const ck = bCellKey(ix, iy, iz);
+        const cell = bGrid.get(ck);
+        if (cell) cell.push(bp); else bGrid.set(ck, [bp]);
+      }
+
+      // How many grid cells to search in each direction to cover boundaryFalloff distance
+      const searchX = Math.ceil(boundaryFalloff / gDx);
+      const searchY = Math.ceil(boundaryFalloff / gDy);
+      const searchZ = Math.ceil(boundaryFalloff / gDz);
+
+      falloffArr = new Float64Array(uniqueCount);
+      falloffArr.fill(1); // default: full displacement
+      for (let id = 0; id < uniqueCount; id++) {
+        const mfTotal = maskedFracTotal[id];
+        const maskedFrac = mfTotal > 0 ? maskedFracMasked[id] / mfTotal : 0;
+        const isOnExclBoundary = excludedPos && excludedPos[id] === 1;
+        // Only compute falloff for fully-textured, non-boundary positions
+        if (maskedFrac > 0 || isOnExclBoundary) continue;
+
+        const px = idPosX[id], py = idPosY[id], pz = idPosZ[id];
+        const cix = Math.max(0, Math.min(gRes - 1, Math.floor((px - gMinX) / gDx)));
+        const ciy = Math.max(0, Math.min(gRes - 1, Math.floor((py - gMinY) / gDy)));
+        const ciz = Math.max(0, Math.min(gRes - 1, Math.floor((pz - gMinZ) / gDz)));
+
+        let minDist2 = boundaryFalloff * boundaryFalloff;
+        for (let dix = -searchX; dix <= searchX; dix++) {
+          const nix = cix + dix;
+          if (nix < 0 || nix >= gRes) continue;
+          for (let diy = -searchY; diy <= searchY; diy++) {
+            const niy = ciy + diy;
+            if (niy < 0 || niy >= gRes) continue;
+            for (let diz = -searchZ; diz <= searchZ; diz++) {
+              const niz = ciz + diz;
+              if (niz < 0 || niz >= gRes) continue;
+              const cell = bGrid.get(bCellKey(nix, niy, niz));
+              if (!cell) continue;
+              for (const bp of cell) {
+                const dx = px - bp[0], dy = py - bp[1], dz = pz - bp[2];
+                const d2 = dx * dx + dy * dy + dz * dz;
+                if (d2 < minDist2) minDist2 = d2;
+              }
+            }
+          }
+        }
+        const dist = Math.sqrt(minDist2);
+        const factor = Math.min(1, dist / boundaryFalloff);
+        falloffArr[id] = factor;
+      }
+    }
+  }
+
   // ── Pass 2: sample displacement texture once per unique position ──────────
 
   for (let i = 0; i < count; i++) {
@@ -271,7 +384,8 @@ export function applyDisplacement(geometry, imageData, imgWidth, imgHeight, sett
     const mfTotal = maskedFracTotal[vid];
     const maskedFrac = mfTotal > 0 ? maskedFracMasked[vid] / mfTotal : 0;
     const centeredGrey = settings.symmetricDisplacement ? (grey - 0.5) : grey;
-    const disp = (isFaceExcluded || isSealedBoundary) ? 0 : (1 - maskedFrac) * centeredGrey * settings.amplitude;
+    const falloffFactor = falloffArr ? falloffArr[vid] : 1.0;
+    const disp = (isFaceExcluded || isSealedBoundary) ? 0 : falloffFactor * (1 - maskedFrac) * centeredGrey * settings.amplitude;
 
     const newX = tmpPos.x + smoothNrmX[vid] * disp;
     const newY = tmpPos.y + smoothNrmY[vid] * disp;
