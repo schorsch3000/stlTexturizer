@@ -2861,6 +2861,9 @@ async function handleExport() {
       )
     );
 
+    // Free subdivided geometry — displacement created a separate copy
+    subdivided.dispose();
+
     const dispTriCount = displaced.attributes.position.count / 3;
     const needsDecimation = dispTriCount > settings.maxTriangles;
     triLimitWarning.classList.toggle('hidden', !safetyCapHit);
@@ -2883,6 +2886,8 @@ async function handleExport() {
           }
         )
       );
+      // Free pre-decimation geometry — decimate created a separate copy
+      displaced.dispose();
     }
 
     // Flat-bottom clamp: when bottom faces are masked (bottomAngleLimit > 0),
