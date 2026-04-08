@@ -200,6 +200,7 @@ const rotationVal    = document.getElementById('rotation-val');
 const amplitudeVal      = document.getElementById('amplitude-val');
 const amplitudeWarning  = document.getElementById('amplitude-warning');
 const refineLenVal = document.getElementById('refine-length-val');
+const resolutionWarning = document.getElementById('resolution-warning');
 const maxTriVal    = document.getElementById('max-triangles-val');
 
 const bottomAngleLimitSlider = document.getElementById('bottom-angle-limit');
@@ -514,7 +515,8 @@ function wireEvents() {
   linkSlider(amplitudeSlider, amplitudeVal, v => { settings.amplitude = v; checkAmplitudeWarning(); return v.toFixed(2); });
   amplitudeVal.addEventListener('change', checkAmplitudeWarning);
   linkSlider(boundaryFalloffSlider, boundaryFalloffVal, v => { settings.boundaryFalloff = v; _falloffDirty = true; return v.toFixed(1); });
-  linkSlider(refineLenSlider, refineLenVal, v => { settings.refineLength  = v; return v.toFixed(2); }, false);
+  linkSlider(refineLenSlider, refineLenVal, v => { settings.refineLength  = v; checkResolutionWarning(); return v.toFixed(2); }, false);
+  refineLenVal.addEventListener('change', checkResolutionWarning);
   linkSlider(maxTriSlider, maxTriVal, v => { settings.maxTriangles = v; return formatM(v); }, false);
   linkSlider(bottomAngleLimitSlider, bottomAngleLimitVal, v => { settings.bottomAngleLimit = v; _falloffDirty = true; return v; });
   linkSlider(topAngleLimitSlider,    topAngleLimitVal,    v => { settings.topAngleLimit    = v; _falloffDirty = true; return v; });
@@ -1237,6 +1239,7 @@ function handlePlaceOnFaceClick(e) {
   // Now reload as if this were a freshly loaded STL
   currentBounds = computeBounds(currentGeometry);
   checkAmplitudeWarning();
+  checkResolutionWarning();
 
   // Dispose old preview material so it gets fully recreated
   if (previewMaterial) {
@@ -1286,6 +1289,7 @@ function handlePlaceOnFaceClick(e) {
   settings.refineLength = defaultEdge;
   refineLenSlider.value = defaultEdge;
   refineLenVal.value = defaultEdge;
+  checkResolutionWarning();
 
   // Update mesh info
   const triCount = getTriangleCount(currentGeometry);
@@ -1595,6 +1599,7 @@ function loadDefaultCube() {
   settings.refineLength = defaultEdge;
   refineLenSlider.value = defaultEdge;
   refineLenVal.value = defaultEdge;
+  checkResolutionWarning();
 
   const triCount = getTriangleCount(geo);
   const mb = ((geo.attributes.position.array.byteLength) / 1024 / 1024).toFixed(2);
@@ -1696,6 +1701,7 @@ async function handleModelFile(file) {
     settings.refineLength = defaultEdge;
     refineLenSlider.value = defaultEdge;
     refineLenVal.value = defaultEdge;
+    checkResolutionWarning();
 
     const triCount = getTriangleCount(geometry);
     const mb = ((geometry.attributes.position.array.byteLength) / 1024 / 1024).toFixed(2);
@@ -1721,6 +1727,19 @@ function checkAmplitudeWarning() {
   amplitudeWarning.classList.toggle('hidden', !danger);
   amplitudeSlider.classList.toggle('amp-danger', danger);
   amplitudeVal.classList.toggle('amp-danger', danger);
+}
+
+function checkResolutionWarning() {
+  if (!currentBounds) return;
+  const diag = Math.sqrt(
+    currentBounds.size.x ** 2 +
+    currentBounds.size.y ** 2 +
+    currentBounds.size.z ** 2
+  );
+  const tooCoarse = settings.refineLength > diag / 100;
+  resolutionWarning.classList.toggle('hidden', !tooCoarse);
+  refineLenSlider.classList.toggle('res-warn', tooCoarse);
+  refineLenVal.classList.toggle('res-warn', tooCoarse);
 }
 
 /**
