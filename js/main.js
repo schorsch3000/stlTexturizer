@@ -334,6 +334,12 @@ function populateLanguageSelector() {
 
     // Refresh dynamic count text to current language
     if (currentGeometry) {
+      const triCount = getTriangleCount(currentGeometry);
+      const mb = ((currentGeometry.attributes.position.array.byteLength) / 1024 / 1024).toFixed(2);
+      const sx = currentBounds.size.x.toFixed(2);
+      const sy = currentBounds.size.y.toFixed(2);
+      const sz = currentBounds.size.z.toFixed(2);
+      meshInfo.textContent = t('ui.meshInfo', { n: triCount.toLocaleString(), mb, sx, sy, sz });
       refreshExclusionOverlay();
     }
   });
