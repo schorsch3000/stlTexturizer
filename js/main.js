@@ -727,7 +727,7 @@ function wireEvents() {
     if (e.target === licenseOverlay) licenseOverlay.classList.add('hidden');
   });
 
-  
+
   // ── Mesh diagnostics dismiss ──
   meshDiagDismiss.addEventListener('click', () => {
     meshDiagnostics.classList.add('hidden');
@@ -737,7 +737,11 @@ function wireEvents() {
   // ── Support banner dismiss ──
   document.getElementById('store-cta-dismiss').addEventListener('click', () => {
     document.getElementById('store-cta-wrapper').classList.add('store-cta-hidden');
+    localStorage.setItem('cta-dismiss',true);
   });
+  if(!localStorage.getItem('cta-dismiss')) {
+    document.getElementById('store-cta-wrapper').classList.remove('store-cta-hidden');
+  }
 
   // ── Export ──
   const startExport = (format) => {
