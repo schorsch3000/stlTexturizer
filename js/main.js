@@ -727,13 +727,7 @@ function wireEvents() {
     if (e.target === licenseOverlay) licenseOverlay.classList.add('hidden');
   });
 
-  // ── Imprint & Privacy ──
-  imprintLink.addEventListener('click', () => { imprintOverlay.classList.remove('hidden'); trapFocus(imprintOverlay); });
-  imprintClose.addEventListener('click', () => imprintOverlay.classList.add('hidden'));
-  imprintOverlay.addEventListener('click', (e) => {
-    if (e.target === imprintOverlay) imprintOverlay.classList.add('hidden');
-  });
-
+  
   // ── Mesh diagnostics dismiss ──
   meshDiagDismiss.addEventListener('click', () => {
     meshDiagnostics.classList.add('hidden');
